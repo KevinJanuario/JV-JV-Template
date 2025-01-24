@@ -1,0 +1,23 @@
+steps:
+
+- bash: |
+    ARTIFACT=$(cat /tmp/$(Build.Repository.Name)-config-$(Build.BuildId) | egrep "PathArtifact" | awk -F "'" '{print $2}')
+    echo `[+] Path do Artifact => $(Build.Repository.LocalPath)/$ARTIFACT`
+    echo "##vso[task.setvariable variable=VariablePathArtifact;isOutput=true]$ARTIFACT"
+
+
+    awk $(Build.Repository.Name)
+  name: path_artifact_jv_veracode
+  displayName: 'Path Artifact'
+
+- task: Veracode@3
+  inputs:
+    ConnectionDetailsSelection: 'Endpoint'
+    AnalysisService: 'veracode'
+    veracodeAppProfile: 'BTB_$(Build.Repository.Name)'
+    version: 'azure-devops-$(Build.BuildNumber)'
+    filepath: $(path_artifact_jv_veracode.VariablePathArtifact)
+    importResults: true
+    maximumWaitTime: '60'
+    createSandBox: false
+    createProfile: false

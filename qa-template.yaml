@@ -1,0 +1,71 @@
+parameters:
+- name: robotcli
+  default: ""
+
+steps:
+- script: |
+
+    python3 -m venv .venv
+    echo "=================="
+    echo "venv"
+    echo "=================="
+    source .venv/bin/activate
+    
+    echo "=================="
+    echo "upgrade-pip"
+    echo "=================="
+    python3 -m pip install --upgrade pip
+
+    echo "=================="
+    echo "install requirements.txt"
+    echo "=================="
+    pip3 install -r requirements.txt
+
+    echo "=================="
+    echo "install chromedriver-py"
+    echo "=================="
+    pip3 install chromedriver-py
+
+    echo "=================="
+    echo "install testarchiver"
+    echo "=================="
+    pip3 install testarchiver
+  displayName: 'Install dependencies'
+
+- bash: |
+    source .venv/bin/activate
+
+    ${{ parameters.robotcli }}
+  displayName: 'Run UI Tests'
+  continueOnError: true
+
+
+# - bash: source .venv/bin/activate ; testarchiver --dbengine postgresql --database "$DATABASE" --host "$HOST" --user "$USER" --pw "$PW" --dont-require-ssl --format robotframework results/output.xml
+#   env:
+#     DATABASE: $(database)
+#     HOST: $(host)
+#     USER: $(user)
+#     PW: $(pw)
+#   displayName: "Upload dos CTs para o Grafana"
+
+- task: CopyFiles@2
+  inputs:
+    SourceFolder: '$(System.DefaultWorkingDirectory)/results'
+    Contents: '**'
+    TargetFolder: '$(Build.ArtifactStagingDirectory)'
+  displayName: "Copiando Output file"
+
+- task: PublishBuildArtifacts@1
+  inputs:
+    PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+    ArtifactName: 'results'
+    publishLocation: 'Container'
+  displayName: "Drop do Output file"
+
+
+- task: PublishHtmlReport@1
+  inputs:
+    reportDir: '$(System.DefaultWorkingDirectory)/results/log.html'
+    tabName: 'QA Tests'
+  displayName: "publicando HTML"
+

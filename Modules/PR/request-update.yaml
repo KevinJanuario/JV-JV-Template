@@ -1,0 +1,26 @@
+parameters:
+  - name: TargetBranch 
+    default: ''
+
+  - name: TittlePullRequest 
+    default: ''
+
+  - name: DescriptionPullRequest 
+    default: ''
+
+  - name: ReviewersTeam 
+    default: ''
+
+steps:
+- task: CreatePullRequest@1
+  displayName: "Pull Request"
+  inputs:
+    repoType: 'Azure DevOps'
+    repositorySelector: 'currentBuild'
+    sourceBranch: '$(Build.SourceBranch)'
+    targetBranch: develop
+    title: 'Master atualizada, atualize a branch develop'
+    description: 'PR automatico de atualização da branch develop devido a última atualização da master default'
+    linkWorkItems: true
+    transitionWorkItems: true
+    alwaysCreatePr: true

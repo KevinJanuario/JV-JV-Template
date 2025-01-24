@@ -1,0 +1,7 @@
+steps:
+- bash: |
+    export VERACODE_API_KEY_ID=""
+    export VERACODE_API_KEY_SECRET=""
+    ./veracode configure
+
+    ./veracode scan --source ubuntu:latest --type image

@@ -1,0 +1,70 @@
+parameters:
+- name: mavenVersion
+  default: '3.5.4'
+- name: PathDockerfile
+  default: ""
+
+steps:
+- template: ./maven-version.yaml
+  parameters:
+    mavenVersion: ${{ parameters.mavenVersion }}
+
+# Task para extrair o artifactId do pom.xml
+- bash: |
+    # Definindo o caminho do pom.xml
+    sourcePath="${{ parameters.PathDockerfile }}"
+    echo "PathDockerfile = $sourcePath"
+    if [[ "$sourcePath" == "." ]] || [[ -z "$sourcePath" ]] ; then
+      sourcePath="."
+    else
+      sourcePath=$(dirname "$sourcePath")
+    fi
+
+    POM_XML="$sourcePath/pom.xml"
+    echo "Path do pom: $sourcePath/pom.xml"
+    # Verifica se o arquivo pom.xml existe
+    if [[ -f "$POM_XML" ]]; then
+      # Extrai o artifactId do ArchUnit
+      artifactId=$(grep -A 1 '<artifactId>archunit-junit5</artifactId>' "$POM_XML" | grep '<groupId>' | sed 's/.*<groupId>\(.*\)<\/groupId>/\1/')
+      if [[ -n "$artifactId" ]]; then
+        echo "##vso[task.setvariable variable=ArchUnitArtifactId;isOutput=true]$artifactId"
+      else
+        echo "##vso[task.setvariable variable=ArchUnitArtifactId;isOutput=true]none"
+      fi
+    else
+      echo "Arquivo pom.xml não encontrado em $POM_XML"
+      echo "##vso[task.setvariable variable=ArchUnitArtifactId;isOutput=true]none"
+    fi
+  name: artifactArchUnit
+  displayName: 'Extract ArchUnit artifactId'
+  condition: eq(variables['VariableLanguage'], 'Java')
+  
+# Executa os testes do ArchUnit somente se a variável ArchUnitArtifactId for diferente de "none"
+- task: Maven@4
+  displayName: "Run ArchUnit Tests"
+  condition: and(succeeded(), ne(variables['artifactArchUnit.ArchUnitArtifactId'], 'none'))
+  inputs:
+    mavenPomFile: '$(language.VariablePathConfig)'
+    goals: 'test --settings <PATH>/'
+    options: '-Dtest=ArchTest'
+    publishJUnitResults: true
+    javaHomeOption: 'Path'
+    jdkDirectory: '$(path.VariableJava)'
+    mavenVersionOption: 'Default'
+    mavenAuthenticateFeed: false
+    effectivePomSkip: false
+    sonarQubeRunAnalysis: false
+
+# Essa task executa o Maven no build, dando skip nos testes. Utilizada no PR, onde a validação do build já foi feita em feature/* ou hotfix/*.
+- task: Maven@4
+  condition: eq(variables['VariableLanguage'], 'Java')
+  inputs:
+    mavenPomFile: '$(language.VariablePathConfig)'
+    goals: 'clean package -DskipTests --settings <PATH>/'
+    publishJUnitResults: false
+    javaHomeOption: 'Path'
+    jdkDirectory: '$(path.VariableJava)'
+    mavenVersionOption: 'Default'
+    mavenAuthenticateFeed: false
+    effectivePomSkip: false
+    sonarQubeRunAnalysis: false

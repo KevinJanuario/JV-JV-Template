@@ -1,0 +1,17 @@
+steps:
+- task: DownloadPipelineArtifact@2
+  inputs:
+    buildType: 'current'
+    artifactName: dist
+    targetPath: '$(Build.Repository.LocalPath)/dist'
+  condition: eq(variables['VariableLanguage'], 'Js')
+  displayName: "Download Node Artifacts"
+  
+
+- task: DownloadPipelineArtifact@2
+  inputs:
+    buildType: 'current'
+    artifactName: reports
+    targetPath: '$(Build.Repository.LocalPath)/reports'
+  condition: eq(variables['VariableLanguage'], 'Js')
+  displayName: "Download Node Artifacts"

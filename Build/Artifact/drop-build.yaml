@@ -1,0 +1,30 @@
+steps:
+#task que pega o valor do parametro PathArtifact para dropar no blob do azure o artefato correto
+- bash: |
+    if find ./angular.json -type d 2>/dev/null >/dev/null ; then
+      if [ -f "<path>/BuildJS.zip" ]; then
+        echo "[+] Copiando artefatos definidos para angular..."
+        echo "[+] Path do Artifact => <path>/"
+        cp <path>/BuildJS.zip "$(build.artifactstagingdirectory)/"
+        #rm -r <path>/*
+      else
+        echo "[-] O arquivo BuildJS.zip não foi encontrado. A pipeline continuará sem copiar artefatos."
+        exit 0  # Define um código de saída 0 para indicar que a execução ocorreu sem erros
+      fi
+    else
+      echo "[+] Copiando artefatos definidos..."
+      IFS=',' read -ra ARTIFACTS <<< "$(cat /tmp/$(Build.Repository.Name)-config-$(Build.BuildId) | egrep "PathArtifact" | awk -F "'" '{print $2}')"
+      for ARTIFACT in "${ARTIFACTS[@]}"; do
+        echo "[+] Path do Artifact => $(Build.Repository.LocalPath)/$ARTIFACT"
+        cp "$(Build.Repository.LocalPath)/$ARTIFACT" "$(build.artifactstagingdirectory)/"
+      done
+    fi
+  name: path_artifact
+  displayName: 'Prepare Artifacts'
+
+# publicando artefato no blob do azure
+- task: PublishBuildArtifacts@1
+  displayName: "Publish Artifacts"
+  inputs:
+    PathtoPublish: '$(build.artifactstagingdirectory)'
+    ArtifactName: 'release'

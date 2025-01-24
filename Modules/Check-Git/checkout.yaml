@@ -1,0 +1,20 @@
+steps:
+  - task: GitflowBranchGate@1
+    displayName: "Checking branches in the Gitflow model"
+    inputs:
+      repository: '$(Build.Repository.Name)'
+      masterBranch: 'master'
+      developBranch: 'develop'
+      hotfixBranches: 'hotfix/*'
+      releaseBranches: 'release/*'
+      featureBranches: 'feature/*'
+      hotfixBranchLimit: '1'
+      hotfixBranchDaysLimit: '10'
+      releaseBranchLimit: '50'
+      releaseBranchDaysLimit: '10'
+      featureBranchLimit: '50'
+      featureBranchDaysLimit: '45'
+      featureBranchesMustNotBeBehindMaster: false
+      authenticationType: 'OAuthToken' 
+    env:
+      SYSTEM_ACCESSTOKEN: $(System.AccessToken)

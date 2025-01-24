@@ -1,0 +1,57 @@
+steps:
+- checkout: self
+  fetchDepth: 0
+
+- task: Gitleaks@2
+  displayName: "Run GitLeaks"
+  inputs:
+    scanlocation: '$(Build.SourcesDirectory)'
+    configtype: 'predefined'
+    scanmode: 'changes'
+    taskfail: 'false'
+    reportfolder: '$(Build.SourcesDirectory)'
+    reportformat: 'sarif'
+    version: 'latest'
+    taskfailonexecutionerror: 'false'
+    continueOnError: true
+
+- script: |
+    #Use o comando find para localizar o arquivo SARIF gerado pelo Gitleaks
+    
+    sarif_file=$(find $(Build.SourcesDirectory)/ -name "*.sarif" | head -n 1)
+    
+    # Verifica se o arquivo foi encontrado
+   
+    if [ -z "$sarif_file" ]; then
+      echo "Arquivo SARIF não encontrado."
+      exit 1
+    fi
+
+    # Nome do arquivo de saída
+    output_file="output.txt"
+
+    # Extrai informações importantes do arquivo SARIF usando jq
+    jq -r '
+      .runs[] | 
+      .tool.driver.name as $tool_name |
+      .results[] | 
+      "Tool: " + $tool_name + "\n" +
+      "Rule ID: " + (.ruleId // "N/A") + "\n" +
+      "Message: " + (.message.text // "N/A") + "\n" +
+      "Level: " + (.level // "N/A") + "\n" +
+      "File: " + (.locations[0].physicalLocation.artifactLocation.uri // "N/A") + "\n" +
+      "Line: " + (.locations[0].physicalLocation.region.startLine | tostring // "N/A") + "\n" +
+      "========================="
+    ' "$sarif_file" > "$output_file"
+
+    echo "Informações extraídas foram salvas em: $output_file"
+  displayName: 'Transform SARIF to TXT'
+  continueOnError: true
+
+- task: PublishBuildArtifacts@1
+  inputs:
+    PathtoPublish: '$(Build.SourcesDirectory)/output.txt'
+    ArtifactName: 'SarifReport'
+    publishLocation: 'Container'
+  displayName: 'Publicar TXT como Artefato'
+  continueOnError: true

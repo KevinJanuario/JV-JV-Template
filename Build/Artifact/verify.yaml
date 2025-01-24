@@ -1,0 +1,33 @@
+steps:
+#Essa task é uma verificação se contem o diretorio source e qual é o padrão de estrutura de pastas: source -> deploy openshift. Sem o source -> Deploy weblogic
+- bash: |
+    RED="\033[0;31m"
+    GREEN="\033[0;32m"
+    YELLOW="\033[0;33m"
+    RESET="\033[0m" 
+
+    # Verificar se o pom.xml está no diretório source
+    if [ -f source/pom.xml ]; then
+        echo -e "${GREEN}[+] pom.xml encontrado no diretório source. App Java e Deploy Openshift"
+        LANGUAGE="Java"
+        path_config="source/pom.xml"
+    elif [ -f sgrc/pom.xml ]; then
+        echo -e "${GREEN}[+] pom.xml encontrado. Diretorio SGRC Encontrado. Deploy Weblogic."
+        LANGUAGE="Java"
+        path_config="sgrc/pom.xml"
+    elif [ -f package.json ]; then
+        echo -e "${GREEN}[+] package.json encontrado. App Angular FrontEnd. Deploy Openshift"
+        LANGUAGE="Js"
+        path_config=""
+    elif [ -f pom.xml ]; then
+        echo -e "${GREEN}[+] pom.xml encontrado no diretório atual. App Java e Deploy Weblogic"
+        LANGUAGE="Java"
+        path_config="pom.xml"
+    else
+        echo -e "${RED}[!] Nenhum pom.xml ou package.json encontrado. Verifique os diretórios e arquivos necessários."
+        exit 1
+    fi
+    echo "##vso[task.setvariable variable=VariableLanguage]$LANGUAGE"
+    echo "##vso[task.setvariable variable=VariablePathConfig;isOutput=true]$path_config"
+  displayName: 'Verificando linguagem'
+  name: 'language'

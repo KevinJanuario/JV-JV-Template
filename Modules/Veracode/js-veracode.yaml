@@ -1,0 +1,22 @@
+steps:
+- bash: |
+    Namespace=$(grep 'Namespace:' /tmp/$(Build.Repository.Name)-config-$(Build.BuildId) | awk '{print $2}')
+    zip -r buildJS.zip $(System.DefaultWorkingDirectory)/* -x node_modules
+    JSFILEPATH=$(find $(System.DefaultWorkingDirectory)/*.zip -type f -printf "%p\n" | sort -n | tail -1)
+    echo $JSFILEPATH
+    echo "##vso[task.setvariable variable=VAR_JSFILEPATH;isOutput=true]$JSFILEPATH"
+    echo "##vso[task.setvariable variable=VAR_NAMESPACE;isOutput=true]$Namespace"
+  name: path_artifact_veracode
+  displayName: 'Path Artifact'
+
+- task: Veracode@3
+  inputs:
+    ConnectionDetailsSelection: 'Endpoint'
+    AnalysisService: 'veracode'
+    veracodeAppProfile: 'BTB_$(path_artifact_veracode.VAR_NAMESPACE)'
+    version: 'azure-devops-$(Build.BuildNumber)'
+    filepath: $(path_artifact_veracode.VAR_JSFILEPATH)
+    importResults: true
+    maximumWaitTime: '60'
+    createSandBox: false
+    createProfile: false

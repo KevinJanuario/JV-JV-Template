@@ -1,0 +1,45 @@
+parameters:
+- name: NomeDoStageBuildContainer
+  default: ""
+- name: ConditionTriggersBuildContainer
+  default: ""
+- name: DisplayNameBuildContainer
+  default: ""
+- name: DependsOnTriggerBuildContainer
+  default: ""
+- name: PoolNameAgentBuildContainer
+  default: ""
+- name: noCode
+  default: 'false'
+- name: Language
+  default: ""
+- name: mavenVersion
+  type: string
+  default: '3.6.3' 
+
+stages:
+- stage:  ${{ parameters.NomeDoStageBuildContainer }}
+  condition:  ${{ parameters.ConditionTriggersBuildContainer }}
+  displayName:  ${{ parameters.DisplayNameBuildContainer }}
+  dependsOn: ${{ parameters.DependsOnTriggerBuildContainer }}
+  pool:
+    name:  ${{ parameters.PoolNameAgentBuildContainer }}
+  jobs:
+  - job: Build_Job
+    displayName: 'Build'
+    steps:
+    - template: ../../Modules/Build/Container/helm-lint.yaml
+    - ${{ if eq(parameters.noCode, 'false') }}:
+        - template: ../../Modules/Build/Artifact/verify.yaml
+        - ${{ if or(eq(parameters.Language, 'java'), eq(parameters.Language, 'Java')) }}:
+            - template: ../../Modules/Build/Artifact/get-version-java.yaml
+            - template: ../../Modules/Build/Artifact/maven-build.yaml
+              parameters:
+                mavenVersion: ${{ parameters.mavenVersion }}
+        - ${{ if or(eq(parameters.Language, 'JS'), eq(parameters.Language, 'Js')) }}:
+            - template: ../../Modules/Build/Artifact/get-version-node.yaml
+            - template: ../../Modules/Build/Artifact/npm-build.yaml
+    - template: ../../Modules/Build/Container/docker-build.yaml
+    - template: ../../Modules/Build/Container/docker-push.yaml
+    - template: ../../Modules/Build/Artifact/drop-build.yaml 
+    - template: ../../Modules/Build/Container/openshift-manifests.yaml

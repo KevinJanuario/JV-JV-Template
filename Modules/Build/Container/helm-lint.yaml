@@ -1,0 +1,149 @@
+parameters:
+- name: skipError
+  default: false
+
+steps:
+  - bash: |
+        ############# VARIABLES #############
+        source /<PATH>/.bashrc
+        GREEN="\e[1;32m"
+        DEFAULT="\e[0m"
+        RED="\e[1;31m"
+        YELLOW="\e[1;33m"
+        BLUE="\e[1;36m"
+
+        echo -e "${BLUE}############################################"
+        echo -e "${GREEN}[+] Clonando repositório usando system.accesstoken (helm-charts)${DEFAULT}"
+        git clone <REPO-LINK> helm-charts
+
+        function check_probe {
+            error_message=""
+
+            if /usr/bin/yq eval '.livenessProbe.enabled' $1 | grep true; then 
+                echo "{BLUE}Foi definido o liveness Probe como true seguindo.."
+            elif /usr/bin/yq eval '.livenessProbe.enabled' $1 | grep false; then
+                echo "{BLUE}Foi definido o liveness Probe como false seguindo.."
+            else
+                error_message+="\n${BLUE}############################################\n"
+                error_message+="${RED}[-] Erro: livenessProbe não está definido no arquivo $1 ${DEFAULT}\n"
+                error_message+="${YELLOW}ATENÇÃO: Adicione o seguinte bloco no arquivo $1 ${DEFAULT}\n"
+                error_message+="${YELLOW}\n"
+                error_message+="livenessProbe:\n  enabled: true\n  path: /actuator/liveness # Ajustar conforme seu endpoint de helthCheck\n" 
+            fi     
+
+            if /usr/bin/yq eval '.readinessProbe.enabled' $1 | grep true; then 
+                echo "{BLUE}Foi definido o readiness Probe como true seguindo.."
+            elif /usr/bin/yq eval '.readinessProbe.enabled' $1 | grep false; then
+                echo "{BLUE}Foi definido o readiness Probe como false seguindo.."
+            else
+                error_message+="\n${BLUE}############################################\n"
+                error_message+="${RED}[-] Erro: readinessProbe não está definido no arquivo ${DEFAULT}\n"
+                error_message+="${YELLOW}ATENÇÃO: Adicione o seguinte bloco no arquivo $1 ${DEFAULT}\n"
+                error_message+="${YELLOW}\n"
+                error_message+="readinessProbe:\n  enabled: true\n  path: /actuator/readiness # Ajustar conforme seu endpoint de helthCheck\n"
+            fi         
+            
+            if [[ -n "$error_message" ]]; then
+                echo -e "${BLUE}############################################\n"
+                echo -e "${YELLOW}⚠️⚠️⚠️ ATENÇÂO!!!"
+                echo -e "$error_message"
+                echo -e "${BLUE}############################################\n"
+                echo -e "${BLUE}   DOC: <URL-DOCUMENT>/Construindo+o+manifesto+Helm\n"
+                echo -e "${BLUE}############################################\n"
+                exit 1
+            else
+                echo -e "${BLUE}############################################\n"
+                echo -e "${GREEN}[+] Ambos livenessProbe e readinessProbe estão habilitados e configurados corretamente. ✅${DEFAULT}"
+            fi
+        }
+
+        if [ -d charts ]; then
+            if ! command -v yq >/dev/null; then
+                echo -e "${YELLOW}[+] Instalando YQ${DEFAULT}"
+                wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/bin/yq 2>/dev/null
+                chmod +x /usr/bin/yq
+            fi
+
+            echo -e "${BLUE}############################################################"
+            echo -e "${GREEN}[+] Fazendo o lint nos charts${DEFAULT}"
+            
+            charts=$(find charts/ -name values.yaml)
+            for chart in $charts; do
+                echo -e "${BLUE}----------------------------------------"
+                echo -e "${BLUE} + $chart${DEFAULT}"
+                
+                # Validação de erro
+                error=$(helm template helm-charts/ -f $chart | grep -P 'key: \S+ \S+|name: \S+ \S+')
+                helm lint helm-charts/ -f $chart --quiet
+                
+                if [[ $? -ne 0 ]] || [[ -n "${error}" ]]; then
+                    echo -e "${RED} FAIL - Lint não passou no manifesto $chart ${DEFAULT}"
+                    outHelm+="err "
+                    file="$chart"
+                    getError
+                else
+                    helm template helm-charts/ -f $chart
+                    echo -e "${GREEN}  SUCCESS: HELM $chart ${DEFAULT}"
+                    
+                    # Verificação de probes
+                    check_probe $chart
+                fi
+            done
+        else
+            echo -e "${RED} [-] Repositório não possui o manifesto charts/<env>/values.yaml ${DEFAULT}"
+            exit 1
+        fi
+
+        echo -e "${BLUE}############################################################"
+        if echo "$outHelm" | grep -q "err"; then
+            echo -e "${RED}  [-] Erro na validação do CHART!!!${DEFAULT}"
+            echo -e "${RED}      $file${DEFAULT}"
+            exit 1
+        else
+            echo -e "${GREEN} [+] CHART validado com sucesso!!! ✅${DEFAULT}"
+        fi
+
+    displayName: 'Helm lint'
+    continueOnError: ${{ parameters.skipError }}
+
+
+  - bash: |
+         set -e
+         ############# VARIABLES #############
+         GREEN="\e[1;32m"
+         DEFAULT="\e[0m"
+         RED="\e[1;31m"
+         YELLOW="\e[1;33m"
+         BLUE="\e[1;36m"
+
+         echo -e "${BLUE}############################################################"
+         echo -e "${GREEN}[+] Fazendo o lint nos charts${DEFAULT}"
+         yaml=`find charts/ -name values.yaml`
+         if [ -z "$yaml" ] ; then
+           echo -e "${BLUE} [+] Repositorio não utiliza charts ${DEFAULT}"
+           echo -e "${BLUE}############################################################"
+           exit 0
+         fi
+         for chart in $yaml
+           do
+             echo -e "${BLUE}----------------------------------------"
+             echo -e "${BLUE} + $chart${DEFAULT}"
+             /usr/bin/yq eval '.' $chart 
+             if [ $? -ne 0 ] ; then
+                     export out="fail"
+                     echo -e "${RED} FAIL -  no lint do YAML $chart ${DEFAULT}"
+                     outYml+=err
+                     file=+$chart
+             else
+                     echo -e "${GREEN}  SUCCESS: YAML $chart${DEFAULT}"
+             fi
+           done
+         if echo $outYml | grep err >/dev/null ;then
+            echo "Erro $file"
+            exit 1
+         else
+           echo -e "${GREEN} [+] YAML validado com sucesso!!! ✅"
+           echo -e "${BLUE}############################################################"
+         fi
+    displayName: 'Yaml Manifest lint'
+    continueOnError: ${{ parameters.skipError }}

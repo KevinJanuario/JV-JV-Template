@@ -1,0 +1,47 @@
+parameters:
+- name: NomeDoStagePipelineScan
+  default: ""
+- name: ConditionTriggersPipelineScan
+  default: ""
+- name: DisplayNamePipelineScan
+  default: ""
+- name: DependsOnTriggerPipelineScan
+  default: ""
+- name: PoolNameAgentPipelineScan
+  default: ""
+- name: nodeVersionBuildPipelineScan
+  default: "11"
+- name: veracodeLockFails
+  default: "No"
+- name: Language
+  default: ""
+- name: mavenVersion
+  default: ''
+
+
+stages:
+- stage: ${{ parameters.NomeDoStagePipelineScan }}
+  condition: ${{ parameters.ConditionTriggersPipelineScan }}
+  displayName: ${{ parameters.DisplayNamePipelineScan }}
+  dependsOn:  ${{ parameters.DependsOnTriggerPipelineScan }}
+  pool:
+    name: ${{ parameters.PoolNameAgentPipelineScan }}
+  jobs:
+  - job: PipelineScan
+    displayName:  'Scan de Vulnerabilidade'
+    steps:
+    - template: ../../Modules/Build/Artifact/verify.yaml
+    - ${{ if or(eq(parameters.Language, 'Java'), eq(parameters.Language, '')) }}:
+        - template: ../../Modules/Build/Artifact/get-version-java.yaml
+    - ${{ if eq(parameters.Language, 'JS') }}:
+        - template: ../../Modules/Build/Artifact/get-version-node.yaml
+    - ${{ if or(eq(parameters.Language, 'Java'), eq(parameters.Language, '')) }}:
+        - template: ../../Modules/Build/Artifact/maven-build.yaml
+          parameters:
+            mavenVersion: ${{ parameters.mavenVersion }}
+    - ${{ if eq(parameters.Language, 'JS') }}:
+        - template: ../../Modules/Build/Artifact/get-node-artifact.yaml
+          parameters:
+            nodeVersion: ${{ parameters.nodeVersionBuildPipelineScan }}
+            veracodeLock: ${{ parameters.veracodeLockFails }}
+    - template: ../../Modules/Veracode/pipescan-Veracode.yaml

@@ -1,0 +1,92 @@
+parameters:
+- name: BuildType
+- name: Language 
+  default: ''
+- name: PathArtifact
+  default: ''
+- name: PathDockerfile
+  default: ''
+- name: Veracode
+  default: "No"
+- name: nodeVersion
+  default: '21.5.0'
+- name: SkipTests
+  default: 'No'
+- name: VeracodeLock
+  default: 'No'
+- name: noCode
+  default: 'false'
+- name: SonarLock
+  default: '0'
+- name: sonar
+  default: true
+- name: poolName
+- name: fullExec
+- name: mavenVersion
+  default: '3.5.4'
+
+stages:
+  - ${{ if and(eq(parameters.BuildType, 'Artifact'), eq(parameters.noCode, 'false')) }}:
+      - ${{ if ne(variables['Build.Reason'], 'PullRequest')}}:
+          - template: ../BuildArtifact.yaml
+            parameters:
+              NomeDoStageBuildArtifact: Build
+              ConditionTriggersBuildArtifact: succeeded('Config')
+              DisplayNameBuildArtifact: 'Build'
+              DependsOnTriggerBuildArtifact: Config
+              PoolNameAgentBuildArtifact: ${{ parameters.poolName }}
+              Language: ${{ parameters.Language }}
+
+  - ${{ if and(eq(parameters.BuildType, 'Container'), eq(parameters.noCode, 'false')) }}:
+      - ${{ if ne(variables['Build.Reason'], 'PullRequest')}}:
+          - template: ../BuildContainer.yaml
+            parameters:
+              NomeDoStageBuildContainer: Build
+              ConditionTriggersBuildContainer: succeeded('Config')
+              DisplayNameBuildContainer: 'Build'
+              DependsOnTriggerBuildContainer: Config
+              PoolNameAgentBuildContainer: ${{ parameters.poolName }}
+              Language: ${{ parameters.Language }}
+
+
+  - ${{ if and(eq(parameters.noCode, 'false'), eq(parameters.sonar, 'true')) }}:
+      - ${{ if or(eq(variables['Build.Reason'], 'PullRequest'), eq(parameters.fullExec, true))}}:
+          - template: ../SonarQube.yaml
+            parameters:
+              NomeDoStageSonarQube: SonarQube
+              ConditionTriggersSonarQube: |
+                  or(
+                    and(succeeded('Gitleak'), contains(variables['Build.SourceBranch'], 'refs/heads/feature')),
+                    and(succeeded('Gitleak'), contains(variables['Build.SourceBranch'], 'refs/heads/develop')),
+                    and(succeeded('Gitleak'), contains(variables['Build.SourceBranch'], 'refs/heads/release')),
+                    and(succeeded('Gitleak'), contains(variables['Build.SourceBranch'], 'refs/heads/master')),
+                    and(succeeded('Gitleak'), contains(variables['Build.SourceBranch'], 'refs/heads/hotfix')),
+                    and(succeeded('Gitleak'), contains(variables['Build.SourceBranch'], 'refs/pull'))
+                  )
+              DisplayNameSonarQube: 'SonarQube'
+              DependsOnTriggerSonarQube: 'Gitleak'
+              PoolNameAgentSonarQube: ${{ parameters.poolName }}
+              Language: ${{ parameters.Language }}
+              mavenVersion: ${{ parameters.mavenVersion }}
+
+  # Construção do Stage de PipelineScan
+  - ${{ if and(eq(parameters.Veracode, 'Yes'), eq(parameters.noCode, 'false')) }}:
+      - ${{ if or(eq(variables['Build.Reason'], 'PullRequest'), eq(parameters.fullExec, true))}}:
+          - template: ../PipelineScan.yaml
+            parameters:
+              NomeDoStagePipelineScan: Veracode
+              ConditionTriggersPipelineScan: |
+                  or(
+                    and(succeeded('Gitleak'), contains(variables['Build.SourceBranch'], 'refs/heads/feature')),
+                    and(succeeded('Gitleak'), contains(variables['Build.SourceBranch'], 'refs/heads/develop')),
+                    and(succeeded('Gitleak'), contains(variables['Build.SourceBranch'], 'refs/heads/release')),
+                    and(succeeded('Gitleak'), contains(variables['Build.SourceBranch'], 'refs/heads/master')),
+                    and(succeeded('Gitleak'), contains(variables['Build.SourceBranch'], 'refs/heads/hotfix')),
+                    and(succeeded('Gitleak'), contains(variables['Build.SourceBranch'], 'refs/pull'))
+                  )
+              DisplayNamePipelineScan: 'VeracodeScan'
+              DependsOnTriggerPipelineScan: SonarQube
+              PoolNameAgentPipelineScan: ${{ parameters.poolName }}
+              nodeVersionBuildPipelineScan: ${{ parameters.nodeVersion }}
+              veracodeLockFails: ${{ parameters.VeracodeLock }}
+              Language: ${{ parameters.Language }}

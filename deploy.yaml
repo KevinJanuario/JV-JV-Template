@@ -1,0 +1,47 @@
+parameters:
+- name: Language
+- name: PathArtifact
+
+stages:
+- ${{ if or(contains(variables['Build.SourceBranch'], 'refs/heads/hotfix'),contains(variables['Build.SourceBranch'], 'refs/heads/release'), contains(variables['Build.SourceBranch'], 'refs/heads/feature'), contains(variables['Build.SourceBranch'], 'refs/heads/develop'), contains(variables['Build.SourceBranch'], 'refs/heads/master')) }}:
+  - stage: Config
+    displayName:  'Config'
+    condition: ne(variables['Build.Reason'], 'PullRequest') 
+    jobs:
+    - job: Config_Parameters
+      pool:
+        name: Agents-Dev
+      displayName:  'Configurando Parametros'
+      steps:
+      - template: Modules/Config/config-deploy-packages.yaml
+        parameters:
+          Lang: ${{ parameters.Language }}
+          Artifact: ${{ parameters.PathArtifact }}
+
+- ${{ if or( contains(variables['Build.SourceBranch'], 'refs/heads/feature'), contains(variables['Build.SourceBranch'], 'refs/heads/hotfix'), contains(variables['Build.SourceBranch'], 'refs/heads/release'), contains(variables['Build.SourceBranch'], 'refs/heads/develop'), contains(variables['Build.SourceBranch'], 'refs/heads/master'))}}:
+  - template: Workflow/CI/GitPull.yaml
+    parameters:
+      NomeDoStageGitPull: GitPull
+      ConditionTriggersGitPull: |
+        and(
+          succeeded('Config'),
+          or(
+            contains(variables['Build.SourceBranch'], 'refs/heads/feature'),
+            contains(variables['Build.SourceBranch'], 'refs/heads/hotfix'),
+            contains(variables['Build.SourceBranch'], 'refs/heads/release'),
+            contains(variables['Build.SourceBranch'], 'refs/heads/develop'),
+            contains(variables['Build.SourceBranch'], 'refs/heads/master')
+          )
+        )
+      DisplayNameGitPull: 'GitPull'
+      PoolNameAgentGitPull: Agents-Dev
+      DependsOnTriggerGitPull: Config
+
+- ${{ if or(contains(variables['Build.SourceBranch'], 'refs/heads/hotfix'),contains(variables['Build.SourceBranch'], 'refs/heads/release'), contains(variables['Build.SourceBranch'], 'refs/heads/feature'), contains(variables['Build.SourceBranch'], 'refs/heads/develop'), contains(variables['Build.SourceBranch'], 'refs/heads/master')) }}:
+  - template: Workflow/CI/PublishArtifact.yaml
+    parameters:
+      NomeDoStagePublishArtifact: PublishArtifact
+      ConditionTriggersPublishArtifact: and(succeeded('GitPull'), ne(variables['Build.Reason'], 'PullRequest'))
+      DisplayNamePublishArtifact: 'PublishArtifact'
+      DependsOnTriggerPublishArtifact: GitPull
+      PoolNameAgentPublishArtifact: Agents-Dev

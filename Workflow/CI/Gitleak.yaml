@@ -1,0 +1,38 @@
+parameters:
+- name: NomeDoStageGitleak
+  default: ""
+- name: ConditionTriggersGitleak
+  default: ""
+- name: DisplayNameGitleak
+  default: ""
+- name: DependsOnTriggerGitleak
+  default: ""
+- name: PoolNameAgentGitleak
+  default: ""
+- name: timeout
+  default: ""
+- name: gitleaksLock
+  default: "No"
+
+stages:
+- stage: ${{ parameters.NomeDoStageGitleak }}
+  condition: |
+    and(
+      or(
+        contains(variables['Build.SourceBranch'], 'refs/heads/feature'),
+        contains(variables['Build.SourceBranch'], 'refs/heads/hotfix'),
+        contains(variables['Build.SourceBranch'], 'refs/heads/bugfix'),
+        eq(variables['Build.Reason'], 'PullRequest')
+      ),
+      ${{ parameters.ConditionTriggersGitleak }},
+      eq('${{ parameters.gitleaksLock }}', 'No')
+    )
+  displayName: ${{ parameters.DisplayNameGitleak }}
+  dependsOn: ${{ parameters.DependsOnTriggerGitleak }} 
+  pool:
+    name: ${{ parameters.PoolNameAgentGitleak }}
+  jobs:
+  - job: Gitleak
+    displayName:  'Gitleak análise'
+    steps:
+    - template: ../../Modules/Check-Git/gitleaks.yaml

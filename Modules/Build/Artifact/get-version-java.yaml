@@ -1,0 +1,112 @@
+steps:
+
+# Essa task ela faz algumas coisa: 1- ela verifica se contem o diretorio source, se nao tiver, a aplicação é deployada em weblogic 2 - verifica a versao java
+# 2- Essa task pega o valor do java no pom.xml. Dessa forma, a task passa a versao do java encontrado para o processo de build ser executado com o jdk correto
+#Além disso essa task tbm verifica se foi passado o valor de SkipTests caso seja necessário dar skip nos testes
+
+- bash: |
+    RED="\033[0;31m"
+    GREEN="\033[0;32m"
+    YELLOW="\033[0;33m"
+    RESET="\033[0m"
+    
+    # Verificar o valor da tag de target no pom.xml
+    if [ -f source/pom.xml ]; then
+        echo -e "${GREEN}[+] pom.xml encontrado no diretório source"
+        version=$(grep -oPm 1 '(?<=<target>)(.*?)(?=</target>)' source/pom.xml | tr -d '${}')
+        if [[ "$version" == "java.version" ]] || [[ -z "$version" ]] ; then
+          version=$(grep -oPm 1 '(?<=<java.version>)(.*?)(?=</java.version>)' source/pom.xml)
+        fi
+    else
+        echo -e "${GREEN}[+] pom.xml encontrado no diretório atual"
+        version=$(grep -oPm 1 '(?<=<target>)(.*?)(?=</target>)' pom.xml | tr -d '${}')
+        if [[ "$version" == "java.version" ]] || [[ -z "$version" ]] ; then
+          version=$(grep -oPm 1 '(?<=<java.version>)(.*?)(?=</java.version>)' pom.xml)
+        fi
+    fi
+
+      
+    # Verificar se a versão é 8, 1.6, 1.8, 10, 13, 17 ou 20 e definir o JAVA_HOME e PATH correspondentes
+
+    echo -e "[+] Verificando suporte a versao..."
+    case $version in
+      10)
+        JAVA_PATH="/usr/java/jdk-10/"
+        JACOCO_VERSION="0.8.1"
+        echo -e "${GREEN}[+] Versao do java suportado. Java encontrado => $version"
+        echo -e "${GREEN}[+] BuildId do Processo de compilação => $(Build.BuildId)"
+        echo -e "${GREEN}[+] Jacoco Version => $JACOCO_VERSION"
+        ;;
+      11)
+        JAVA_PATH="/usr/java/jdk-11/"
+        JACOCO_VERSION="0.8.1"
+        echo -e "${GREEN}[+] Versao do java suportado. Java encontrado => $version"
+        echo -e "${GREEN}[+] BuildId do Processo de compilação => $(Build.BuildId)"
+        echo -e "${GREEN}[+] Jacoco Version => $JACOCO_VERSION"
+        ;;
+      13)
+        JAVA_PATH="/usr/java/jdk-13/"
+        JACOCO_VERSION="0.8.7"
+        echo -e "${GREEN}[+] Versao do java suportado. Java encontrado => $version"
+        echo -e "${GREEN}[+] BuildId do Processo de compilação => $(Build.BuildId)"
+        echo -e "${GREEN}[+] Jacoco Version => $JACOCO_VERSION"
+        ;;
+      16)
+        JAVA_PATH="/usr/java/jdk-17/"
+        JACOCO_VERSION="0.8.6"
+        echo -e "${GREEN}[+] Versao do java suportado. Java encontrado => $version"
+        echo -e "${GREEN}[+] BuildId do Processo de compilação => $(Build.BuildId)"
+        echo -e "${GREEN}[+] Jacoco Version => $JACOCO_VERSION"
+        ;;
+      17)
+        JAVA_PATH="/usr/java/jdk-17/"
+        JACOCO_VERSION="0.8.7"
+        echo -e "${GREEN}[+] Versao do java suportado. Java encontrado => $version"
+        echo -e "${GREEN}[+] BuildId do Processo de compilação => $(Build.BuildId)"
+        echo -e "${GREEN}[+] Jacoco Version => $JACOCO_VERSION"
+        ;;
+      20)
+        JAVA_PATH="/usr/java/jdk-20/"
+        JACOCO_VERSION="0.8.9"
+        echo -e "${GREEN}[+] Versao do java suportado. Java encontrado => $version"
+        echo -e "${GREEN}[+] BuildId do Processo de compilação => $(Build.BuildId)"
+        echo -e "${GREEN}[+] Jacoco Version => $JACOCO_VERSION"
+        ;;
+      21)
+        JAVA_PATH="/usr/java/jdk-21"
+        JACOCO_VERSION="0.8.11"
+        echo -e "${GREEN}[+] Versao do java suportado. Java encontrado => $version"
+        echo -e "${GREEN}[+] BuildId do Processo de compilação => $(Build.BuildId)"
+        echo -e "${GREEN}[+] Jacoco Version => $JACOCO_VERSION"
+        ;;
+      *)
+        YELLOW="\033[0;33m"
+        JAVA_PATH="/usr/java/jdk-1.8/"
+        JACOCO_VERSION="0.8.11"
+        echo -e "${YELLOW}[!!] Versao do Java nao encontrado ou desatualizado. Isso ocorre pois:"
+        echo -e "${YELLOW}1- Seu Java default utilizado é o 8 (1-8) ou inferior... atualize o quanto antes sua aplicação para o java mais recente possível"
+        echo -e "${YELLOW}2- Seu pom.xml nao indica a versao do jdk a ser usado. Verifique se contem a linha <target>Versao do Java</target> dentro da tag <build>"
+        echo -e "${YELLOW}3- Seu pom.xml nao foi encontrado. Verifique o path do pom.xml pai"
+        echo -e "${YELLOW}4- Se trata de uma aplicacao que nao e java (javascript, python). Se for este o caso, apenas ignore esta mensagem."
+        echo "[+] Versao do Java capturado no pom.xml => $version"
+        ;;
+    esac
+
+    echo ""
+    mvn -version
+    echo "[+] JAVA_PATH = $JAVA_PATH"
+    TESTS=`cat /tmp/$(Build.Repository.Name)-config-$(Build.BuildId) | egrep "SkipTests" | awk '{print $2}'`
+
+    if [[ $TESTS == "Yes" ]]; then
+        echo -e "${GREEN}[+] Skip nos Testes..."
+        SKIP="-DskipTests"
+    else
+        echo -e "${GREEN}[+] Executando testes junto ao build..."
+        SKIP=" "
+    fi
+    echo "##vso[task.setvariable variable=VariableJava;isOutput=true]$JAVA_PATH"
+    echo "##vso[task.setvariable variable=VariableJacocoVersion;isOutput=true]$JACOCO_VERSION"
+    echo "##vso[task.setvariable variable=VariableSkipTests;isOutput=true]$SKIP"
+  displayName: 'Verificando Versao Java'
+  name: 'path'
+  condition: eq(variables['VariableLanguage'], 'Java')

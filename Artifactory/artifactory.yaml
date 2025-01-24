@@ -1,0 +1,98 @@
+parameters:
+- name: 'libArtifact'
+  default: 'false'
+- name: 'artifact_server'
+  default: '<server>'
+- name: pomFile
+  default: './source'
+
+steps:
+- bash: |
+    ARTIFACT=$(cat /tmp/$(Build.Repository.Name)-config-$(Build.BuildId) | egrep "PathArtifact" | awk -F "'" '{print $2}')
+    echo "[+] Path do Artifact => $(Build.Repository.LocalPath)/$ARTIFACT"
+    echo "##vso[task.setvariable variable=VariablePathArtifact;isOutput=true]$ARTIFACT"
+    source /<path>/.bashrc
+    USER_ART="$USER_ART"
+    PASS_ART="$PASS_ART"
+    echo "##vso[task.setvariable variable=USER_ART]$USER_ART"
+    echo "##vso[task.setvariable variable=PASS_ART;issecret=true]$PASS_ART"
+  name: path_artifact_art
+  displayName: 'Path Artifact'
+
+- task: Bash@3
+  displayName: Upload Artifacts to Artifactory
+  inputs:
+    targetType: "inline"
+    script: |
+      #Carregando variaveis de ambiente
+      echo "[+] Carregando Variaveis de ambiente..."
+      source /<path>/.bashrc
+      USER_ART="$USER_ART"
+      PASS_ART="$PASS_ART"
+
+      #Adicionando variaveis para fazer a req no Artifactory
+      JFROG_URL="<URL>"
+      JFROG_REPOSITORY="<REPO>"
+
+      #Convertendo o parametro enviado para ARRAY delimitando por ","
+      IFS=',' read -ra ARTIFACTS <<< "$(path_artifact_art.VariablePathArtifact)"
+      
+      echo "[+] Path do Artifact => $ARTIFACTS"
+      #Percorre pela lista gerada
+      for ARTIFACT in "${ARTIFACTS[@]}"; do
+        ARTIFACT_PATH="$(Build.Repository.LocalPath)/$ARTIFACT"
+        ARTIFACT_NAME=$(basename "$ARTIFACT_PATH")
+        DIR_PATH=$(dirname "$ARTIFACT_PATH")
+        echo "[+] ARTIFACT_PATH => $ARTIFACT_PATH"
+        echo "[+] ARTIFACT_NAME => $ARTIFACT_NAME"
+        echo "[+] BuildId => $(Build.BuildId)"
+
+        # Extraia o nome do arquivo sem extensão e a extensão
+        BASE_NAME="${ARTIFACT_NAME%.*}"
+        EXTENSION="${ARTIFACT_NAME##*.}"
+
+        # Verifique a extensão e adicione o número de build se for war ou ear
+        if [ "$EXTENSION" == "war" ] || [ "$EXTENSION" == "ear" ] || [ "$EXTENSION" == "jar" ]; then
+
+          # Crie o nome do arquivo com a tag do número de build
+          TAGGED_NAME="${BASE_NAME}-$(Build.BuildId).${EXTENSION}"
+
+          # Nome tagueado
+          echo "[+] Taguiando o Artifact com o numero de build (BuildId)..."
+          echo "[+] ARTIFACT_TAG_NAME => ${TAGGED_NAME}"
+          echo "[+] Renomeando o Artefato de $ARTIFACT_NAME para $TAGGED_NAME"
+          cp $ARTIFACT_PATH $DIR_PATH/$TAGGED_NAME
+        else
+          echo "A extensão do arquivo não é war, ear ou jar."
+          exit 1
+        fi       
+
+        #Enviando os artefatos para o Artifactory
+        echo "[+] Path do Artifact no Jfrog => $JFROG_URL/$JFROG_REPOSITORY/$TAGGED_NAME"
+        curl -X PUT "$JFROG_URL/$JFROG_REPOSITORY/$TAGGED_NAME" \
+          -H "Authorization: Basic $(echo -n "$USER_ART:$PASS_ART" | base64)" \
+          -H "Content-Type: application/octet-stream" \
+          -T "$DIR_PATH/$TAGGED_NAME"
+        STATUS_CODE=$?
+        if [[ $STATUS_CODE -eq 0 ]]; then
+            echo "Artifact $TAGGED_NAME uploaded successfully."
+        else
+            echo "Error uploading artifact $TAGGED_NAME: $STATUS_CODE"
+            exit 1
+        fi
+      done
+
+- ${{ if and(eq(parameters.libArtifact, true), eq(variables['Build.SourceBranchName'], 'master')) }}:
+    - task: Maven@4
+      displayName: 'Maven Lib Deploy to Artifactory'
+      inputs:
+        mavenPomFile: '${{ parameters.pomFile }}/pom.xml'
+        goals: 'deploy'
+        options: '--settings <path> -DaltDeploymentRepository=artifactory-releases::default::${{ parameters.artifact_server }}/artifactory/<REPO> -DskipTests'
+        javaHomeOption: 'Path'
+        jdkDirectory: '$(path.VariableJava)'
+        mavenVersionOption: 'Default'
+        jdkArchitectureOption: 'x64'
+      env:
+        USER_ART: $(USER_ART)
+        PASS_ART: $(PASS_ART)

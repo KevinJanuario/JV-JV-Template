@@ -1,0 +1,41 @@
+parameters:
+- name: NomeDoStageBuildArtifact
+  default: ""
+- name: ConditionTriggersBuildArtifact
+  default: ""
+- name: DisplayNameBuildArtifact
+  default: ""
+- name: DependsOnTriggerBuildArtifact
+  default: ""
+- name: PoolNameAgentBuildArtifact
+  default: ""
+- name: Language
+  default: ""
+- name: libArtifact
+- name: mavenVersion
+
+stages:
+- stage: ${{ parameters.NomeDoStageBuildArtifact }}
+  condition: ${{ parameters.ConditionTriggersBuildArtifact }}
+  displayName: ${{ parameters.DisplayNameBuildArtifact }}
+  dependsOn: ${{ parameters.DependsOnTriggerBuildArtifact }}
+  pool:
+    name: ${{ parameters.PoolNameAgentBuildArtifact }}
+  jobs:
+  - job: Build_Job
+    displayName: 'Build'
+    steps:
+    - template: ../../Modules/Build/Artifact/verify.yaml
+    - ${{ if or(eq(parameters.Language, 'java'), eq(parameters.Language, 'Java')) }}:
+        - template: ../../Modules/Build/Artifact/get-version-java.yaml
+        - template: ../../Modules/Build/Artifact/maven-build.yaml
+          parameters:
+            mavenVersion: ${{ parameters.mavenVersion }}
+    - ${{ if or(eq(parameters.Language, 'JS'), eq(parameters.Language, 'Js')) }}:
+        - template: ../../Modules/Build/Artifact/get-version-node.yaml
+        - template: ../../Modules/Build/Artifact/npm-build.yaml
+    - template: ../../Modules/Artifactory/artifactory.yaml
+      parameters:
+        libArtifact: ${{ parameters.libArtifact }}
+    - template: ../../Modules/Build/Artifact/drop-build.yaml
+

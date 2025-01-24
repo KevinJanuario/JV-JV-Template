@@ -1,0 +1,79 @@
+parameters:
+- name: BranchTagBuildDockerfile
+  default: $(imageTag.VariableTag)
+
+
+steps:
+- bash: |
+    DOCKERFILE=$(cat /tmp/$(Build.Repository.Name)-config-$(Build.BuildId) | egrep "PathDockerfile" | awk '{print $2}')
+    echo "[+] Path do Dockerfile => $DOCKERFILE"
+    cat /tmp/$(Build.Repository.Name)-config-$(Build.BuildId)
+    echo "##vso[task.setvariable variable=VariablePathDockerfile;isOutput=true]$DOCKERFILE"
+  name: path_dockerfile
+  displayName: 'Path Dockerfile'
+
+- bash: |
+    # Coloca o nome do projeto do Azure DevOps e do repo em letras minúsculas
+    PROJECT=$(echo $(System.TeamProject) | iconv -f utf-8 -t ascii//TRANSLIT | sed 's/ç/c/g' | tr '[:upper:]' '[:lower:]' | tr -s ' ' | tr ' ' '-' | tr -s '-' )
+    IMAGE=$(echo $(Build.Repository.Name) | tr '[:upper:]' '[:lower:]' | tr -s ' ' | tr ' ' '-' | tr -s '-')
+    IMAGE="$PROJECT/$IMAGE"
+    REGISTRY="<REGISTRY>"
+    PATHPROJECT="$REGISTRY/$IMAGE"
+    
+    TAG="$(Build.BuildId)"
+
+    echo "$PATHPROJECT:$TAG" > imageTag.txt
+
+    echo "[+] path do contexto atual"
+    echo "[+] - Image TAG is: $TAG"
+
+    if find ./source -type d 2>/dev/null >/dev/null ; then
+      echo -e "${GREEN}[+] App Backend... Movendo o settings para o source..."
+      cp <PATH>/ $(System.DefaultWorkingDirectory)/source
+    else
+      echo -e "${GREEN}[+] App Backend... Movendo o settings para o src..."
+      cp  <PATH>/ $(System.DefaultWorkingDirectory)/
+    fi
+    
+    # Passa as informacoes acima para uma variavel entre tasks
+    echo "##vso[task.setvariable variable=VariableBuild;isOutput=true]$IMAGE"
+    echo "##vso[task.setvariable variable=VariableTag;isOutput=true]$TAG"
+    echo "##vso[task.setvariable variable=VariableProject;isOutput=true]$PATHPROJECT"
+    echo " - VariableProject: $PATHPROJECT"
+    echo " - VariableTag: $TAG"
+    echo " - VariableBuild: $IMAGE"
+  displayName: 'Image tag like branch'
+  name: imageTag
+
+- bash: |
+      echo "[+] BuildName -> $(imageTag.VariableProject)"
+      echo "[+] Verificando conteudo do diretorio:"
+      ls
+
+      echo ""
+      echo "[+] Análise do dockerlinter"
+      docker run --rm -i ghcr.io/hadolint/hadolint < $(path_dockerfile.VariablePathDockerfile) > dockerlint-results.txt
+      
+      cat dockerlint-results.txt
+  displayName: "Lint Dockerfile"
+  continueOnError: true
+ 
+- task: PublishBuildArtifacts@1
+  inputs:
+    PathtoPublish: 'dockerlint-results.txt'
+    ArtifactName: 'DockerLintResults'
+  displayName: 'Publish Dockerlint Results'
+  continueOnError: true
+
+- task: Docker@2
+  displayName: "Image Build"
+  inputs:
+    repository: $(imageTag.VariableProject)
+    command: 'build'
+    Dockerfile: $(path_dockerfile.VariablePathDockerfile)
+    tags: |
+      $(imageTag.VariableTag)
+      latest
+
+- bash: rm -rf .m2
+  displayName: 'Removing local cache for mvn'

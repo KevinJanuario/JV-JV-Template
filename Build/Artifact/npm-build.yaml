@@ -1,0 +1,239 @@
+steps:
+- script: |
+    RED="\033[0;31m"
+    GREEN="\033[0;32m"
+    YELLOW="\033[0;33m"
+    RESET="\033[0m" 
+    echo -e "${BLUE}#########################################################"
+    if [ -f "package-lock.json" ]; then
+      echo -e "${GREEN}  [+] package-lock.json existe no repositorio!"
+      echo "##vso[task.setvariable variable=PACKAGE_LOCK_EXISTS]true"
+    else
+      echo -e "${YELLOW}  [!!] package-lock.json não existe no repoisitorio!"
+      echo "##vso[task.setvariable variable=PACKAGE_LOCK_EXISTS]false"
+    fi
+    echo "#########################################################"
+  displayName: 'Check if package-lock.json exists'
+
+- task: Cache@2
+  condition: eq(variables['PACKAGE_LOCK_EXISTS'], 'true')
+  inputs:
+    key: 'npm | "$(Agent.OS)" | package-lock.json'
+    path: '<path>/.npm'
+  displayName: 'Cache npm packages from AzDevops'
+  continueOnError: true
+
+- bash: |
+    RED="\033[0;31m"
+    GREEN="\033[0;32m"
+    YELLOW="\033[0;33m"
+    RESET="\033[0m" 
+    source <path>/.nvm/nvm.sh
+    nvm use $(node_version_task.nodeVersion)
+    npm --version
+    echo -e "${GREEN}[+] Iniciando instalação das dependencias..."
+    npm install --prefer-offline
+  displayName: 'Dependency Install'
+  condition: eq(variables['VariableLanguage'], 'Js')
+
+- bash: |
+    RED="\033[0;31m"
+    GREEN="\033[0;32m"
+    YELLOW="\033[0;33m"
+    RESET="\033[0m" 
+    source <path>/.nvm/nvm.sh
+    nvm use $(node_version_task.nodeVersion)
+    echo 
+
+    echo -e "${GREEN}[+] Iniciando Build com Node $(node_version_task.nodeVersion) "
+    REPO="$(Build.Repository.Name)"
+    PROJECT="$(System.TeamProject)"
+
+    if [ "$PROJECT" = "One by One" ] && [ "$REPO" = "one-by-one-consultor" ]; then
+      echo -e "${YELLOW}  [!!] Projeto: One by One"
+      echo -e "${YELLOW}  [!!] REPO: one-by-one-consultor"
+      echo -e "${YELLOW}  [!!] Habilitando processo de deploy apropriado para o one-by-one-consultor..."
+
+      echo -e "${GREEN}[+] npx ng build --prod"
+      npx ng build --prod
+
+      echo -e "${GREEN}[+] npm run test:coverage --if-present"
+      npm run test:coverage --if-present --prefer-offline
+    fi
+    if [ "$PROJECT" = "Viva o Mundo" ] && [ "$REPO" = "vivamundo" ]; then
+       echo -e "${GREEN}[+] Habilitando processo de deploy apropriado para o vivamundo..."
+       npm run ng build --configuration=production
+    fi
+    echo -e "${GREEN}[+] Iniciando o build da aplicação"
+    npm run build --prefer-offline
+
+  displayName: "Npm Build"
+  condition: eq(variables['VariableLanguage'], 'Js')
+
+- bash: |
+    RED="\033[0;31m"
+    GREEN="\033[0;32m"
+    YELLOW="\033[0;33m"
+    RESET="\033[0m" 
+    source <path>/.nvm/nvm.sh
+    nvm use $(node_version_task.nodeVersion)
+    echo 
+    REPO="$(Build.Repository.Name)"
+    PROJECT="$(System.TeamProject)"
+
+    #if [ "$PROJECT" = "One by One" ] && [ "$REPO" = "one-by-one-consultor" ]; then
+    #  echo "[+] npm run test:coverage --if-present"
+    #  npm run test:coverage --if-present
+    #fi
+    #
+    #echo "[+] Iniciando teste generico"
+    #npm run test --if-present --prefer-offline
+    #echo "[+] Iniciando teste de cobertura"
+    #npm run test:coverage --if-present --prefer-offline
+    #echo "[+] Iniciando post-build"
+    #npm run post-build --if-present --prefer-offline
+    echo "[+] Iniciando testes..."
+
+    # Inicia os testes em paralelo com redirecionamento de saída
+    echo -e "${GREEN}[+] Iniciando teste Funcional..."
+    npm run test --if-present --prefer-offline > test_output.log 2>&1 & pid_test=$!
+
+    if [ "$PROJECT" = "One by One" ] && [ "$REPO" = "one-by-one-consultor" ]; then
+      echo -e "${GREEN}[+] Iniciando teste de cobertura específico..."
+      npm run test:coverage --if-present > coverage_output.log 2>&1 & pid_coverage=$!
+    else
+      echo -e "${GREEN}[+] Iniciando teste de cobertura genérico..."
+      npm run test:coverage --if-present --prefer-offline > coverage_output.log 2>&1 & pid_coverage=$!
+    fi
+    
+    check_processes() {
+      count=0
+      while kill -0 $pid_test 2>/dev/null || kill -0 $pid_coverage 2>/dev/null; do
+        count=$(( count + 1 ))
+        if [[ $count -eq "70" ]] ; then
+          echo -e "${YELLOW}[!!] Limite de tempo atingido..."
+          exit 1
+        fi
+        if kill -0 $pid_test 2>/dev/null; then
+          echo -e "${YELLOW}  [!!] Teste Funcional ainda está em execução..."
+          echo -e "${BLUE}>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>"
+          tail coverage_output.log
+        fi
+        if kill -0 $pid_coverage 2>/dev/null; then
+          echo -e "${YELLOW}  [!!] Teste de Cobertura ainda está em execução..."
+          echo -e "${BLUE}>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>"
+          tail test_output.log
+        fi
+        sleep 10
+      done
+    }
+    
+    check_processes
+    
+    wait $pid_test
+    status_test=$?
+    wait $pid_coverage
+    status_coverage=$?
+    
+    echo -e "${BLUE}--------------------------------------------------------------------------"
+    if [ $status_test -ne 0 ]; then
+      echo -e "${BLUE}###############################################"
+      echo -e "${RED}  [-] Teste genérico não passou =("
+      echo -e "${YELLOW}    [!!] Saída de erro do teste genérico:"
+      cat test_output.log
+      echo -e "${BLUE}###############################################"
+    else
+      echo -e "${BLUE}[+] Teste genérico passou =)"
+      echo -e "${BLUE}###############################################"
+    fi
+    
+    if [ $status_coverage -ne 0 ]; then
+      echo -e "${BLUE}###############################################"
+      echo -e "${RED}  [-] Teste de cobertura não passou"
+      echo -e "${YELLOW}    [!!] Saída de erro do teste de cobertura:"
+      cat coverage_output.log
+      echo "###############################################"
+    else
+      echo -e "${GREEN}[+] Teste de cobertura passou =)"
+      echo -e "${BLUE}###############################################"
+    fi
+    
+    if [ $status_test -eq 0 ] && [ $status_coverage -eq 0 ]; then
+      echo -e "${GREEN}[+] Todos os testes passaram com sucesso    =D"
+      echo -e "${BLUE}###############################################"
+      echo -e "${GREEN}}[+] Iniciando post-build"
+      npm run post-build --if-present --prefer-offline
+      echo -e "${BLUE}###############################################"
+    else
+      echo -e "${RED}[-] Alguns testes falharam. Verifique a saída de erro acima."
+      exit 1
+    fi
+  displayName: "Npm Test"
+  condition: eq(variables['VariableLanguage'], 'Js')
+  continueOnError: true
+
+- task: CopyFiles@2
+  displayName: 'Copy Dist Artifacts'
+  inputs:
+    SourceFolder: '$(Build.SourcesDirectory)/dist'
+    contents: '**'
+    targetFolder: '$(Build.ArtifactStagingDirectory)/dist'
+  condition: eq(variables['VariableLanguage'], 'Js')
+
+- bash: | 
+    RED="\033[0;31m"
+    GREEN="\033[0;32m"
+    YELLOW="\033[0;33m"
+    RESET="\033[0m" 
+
+    echo -e "${GREEN}[+] Validando se o arquivo de report foi gerado..."
+    test_report="./reports"
+    find ./ -type d -name reports
+    if [[ -d  "$test_report" ]] ; then
+      echo -e "  ${GREEN}[+] Diretorio de reports encontrado..."
+    else
+      echo -e "${RED}[-] Diretorio de reports não encontrado"
+      echo -e "${BLUE}>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>"
+      echo -e "${YELLOW}  [!!] Valide se as configurações de report estão definidas corretamente no arquivo package.json"
+      echo '
+        "reporters": [
+    "default",
+    [
+      "jest-sonar",
+      {
+        "outputDirectory": "reports",
+        "outputName": "test-reporter.xml",
+        "reportedFilePath": "absolute"
+      }
+    ]'
+      echo -e "${BLUE}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<"
+      exit 1
+    fi
+  displayName: 'Validate report path'
+  condition: eq(variables['VariableLanguage'], 'Js')
+  continueOnError: true
+
+- task: CopyFiles@2
+  displayName: 'Copy Reports Artifacts'
+  inputs:
+    SourceFolder: '$(Build.SourcesDirectory)/reports'
+    contents: '**'
+    targetFolder: '$(Build.ArtifactStagingDirectory)/reports'
+  condition: eq(variables['VariableLanguage'], 'Js')
+  continueOnError: true
+
+
+- task: PublishBuildArtifacts@1
+  displayName: 'Publish Dist Artifacts'
+  inputs:
+    pathToPublish: '$(Build.ArtifactStagingDirectory)/dist'
+    artifactName: dist
+  condition: eq(variables['VariableLanguage'], 'Js')
+
+- task: PublishBuildArtifacts@1
+  displayName: 'Publish Reports Artifacts'
+  inputs:
+    pathToPublish: '$(Build.ArtifactStagingDirectory)/reports'
+    artifactName: reports
+  condition: eq(variables['VariableLanguage'], 'Js')
+  continueOnError: true

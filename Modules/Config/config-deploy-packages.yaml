@@ -1,0 +1,13 @@
+parameters:
+- name: Lang
+- name: Artifact
+
+steps:
+- bash: |
+    echo "[+] Salvando as configs em um tmp"
+    echo "Language: ${{ parameters.Lang }}" >> /tmp/$(Build.Repository.Name)-config-$(Build.BuildId)
+    echo "PathArtifact: '${{ parameters.Artifact }}'" >> /tmp/$(Build.Repository.Name)-config-$(Build.BuildId)
+
+    echo "[+] cat no arquivo de config => /tmp/$(Build.Repository.Name)-config-$(Build.BuildId)"
+    cat /tmp/$(Build.Repository.Name)-config-$(Build.BuildId)
+  displayName: 'config'

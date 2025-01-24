@@ -1,0 +1,35 @@
+parameters:
+- name: NomeDoStageSonarQube
+  default: ""
+- name: ConditionTriggersSonarQube
+  default: ""
+- name: DisplayNameSonarQube
+  default: ""
+- name: DependsOnTriggerSonarQube
+  default: ""
+- name: PoolNameAgentSonarQube
+  default: ""
+- name: mavenVersion
+  default: "3.5.4"
+- name: PathDockerfile
+  default: ""
+- name: Language
+  default: ""
+stages:
+  - stage: ${{ parameters.NomeDoStageSonarQube }}
+    condition: ${{ parameters.ConditionTriggersSonarQube }}
+    displayName: ${{ parameters.DisplayNameSonarQube }}
+    dependsOn: ${{ parameters.DependsOnTriggerSonarQube }}
+    pool:
+      name: ${{ parameters.PoolNameAgentSonarQube }}
+    jobs:
+    - job: SonarQube
+      displayName:  'Configuração do projeto e Análise'
+      steps:
+      - template: ../../Modules/SonarQube/sonar-create-project.yaml
+      - template: ../../Modules/SonarQube/sonar-config-project.yaml
+        parameters:
+          mavenVersion: ${{ parameters.mavenVersion }}
+          PathDockerfile: ${{ parameters.PathDockerfile }}
+          Language: ${{ parameters.Language }}
+

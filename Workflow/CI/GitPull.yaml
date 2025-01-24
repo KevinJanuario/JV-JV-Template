@@ -1,0 +1,24 @@
+parameters:
+- name: NomeDoStageGitPull
+  default: ""
+- name: ConditionTriggersGitPull
+  default: ""
+- name: DisplayNameGitPull
+  default: ""
+- name: DependsOnTriggerGitPull
+  default: ""
+- name: PoolNameAgentGitPull
+  default: ""
+
+stages:
+- stage: ${{ parameters.NomeDoStageGitPull }}
+  condition: ${{ parameters.ConditionTriggersGitPull }}
+  displayName:  ${{ parameters.DisplayNameGitPull }}
+  dependsOn: ${{ parameters.DependsOnTriggerGitPull }}
+  pool:
+    name: ${{ parameters.PoolNameAgentGitPull }}
+  jobs:
+  - job: Git_pull
+    displayName:  'git pull origin master'
+    steps:
+    - template: ../../Modules/Check-Git/check-branch-default.yaml

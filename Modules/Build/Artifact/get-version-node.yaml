@@ -1,0 +1,43 @@
+steps:
+# Essa task verifica versão do node no repositorio. Caso a versão nao esteja instalada ela instala
+# Caso a versão nao possa ser instalada, execute novamente o mesmo comand nvm install mas pelo servidor
+- bash: |
+
+    RED="\033[0;31m"
+    GREEN="\033[0;32m"
+    YELLOW="\033[0;33m"
+    RESET="\033[0m" 
+    
+    source <PATH>/.bashrc
+    source <PATH>/.nvm/nvm.sh
+
+    # Pegando a versao do node no parametro
+    NODE=$(cat /tmp/$(Build.Repository.Name)-config-$(Build.BuildId) | egrep "nodeVersion" | awk '{print $2}')
+
+    echo -e "${YELLOW}[+] Node solicitado via parametros => $NODE"
+    
+    # Usando o Node com o nvm
+    NODE_OUTPUT=$(nvm use v$NODE 2>&1)
+
+    # Verifica se a saída contém a string "N/A", caso tiver, o node em questao nao está instalado
+    if [[ $NODE_OUTPUT == *"N/A"* ]]; then
+        echo -e "${YELLOW}[+] Não contém o node versao v$NODE . Instalando a versao"
+        
+        INSTALL_OUTPUT=$(nvm install v$NODE 2>&1)
+        if [[ $INSTALL_OUTPUT == *"not found"* ]]; then
+            echo $INSTALL_OUTPUT
+            echo -e "${RED}[-] Versao v$NODE nao encontrado. Contacte o Devops para saber as possiveis versoes a serem instaladas para o build na pipeline"
+            exit 1
+        else
+            echo -e "${GREEN}[+] Versao v$NODE instalado com sucesso."
+        fi
+
+    else
+        echo -e "${GREEN}[+] Node v$NODE utilizado com sucesso."
+        echo $NODE_OUTPUT
+    fi
+
+    echo "##vso[task.setvariable variable=nodeVersion;isOutput=true]$NODE"
+  condition: eq(variables['VariableLanguage'], 'Js')
+  displayName: 'Verificando Versao Node'
+  name: 'node_version_task'

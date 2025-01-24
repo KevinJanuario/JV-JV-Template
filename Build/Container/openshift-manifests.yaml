@@ -1,0 +1,27 @@
+steps:
+- bash: |
+    if [[ -d "$(Build.SourcesDirectory)/charts" ]] ; then
+      echo "[!!] manifestos charts/ existem..."
+    else
+      echo "[+] Criando diretorio /charts"
+      mkdir -p $(Build.SourcesDirectory)/charts/hml
+      mkdir -p $(Build.ArtifactStagingDirectory)/charts/hml
+      touch $(Build.SourcesDirectory)/charts/hml/null.txt
+    fi
+  displayName: 'Check artifacts'
+  continueOnError: true
+
+- task: CopyFiles@2
+  displayName: 'Copy Helm charts'
+  inputs:
+    SourceFolder: '$(Build.SourcesDirectory)/charts'
+    contents: '**'
+    targetFolder: '$(Build.ArtifactStagingDirectory)/charts'
+  continueOnError: true
+
+- task: PublishBuildArtifacts@1
+  displayName: 'Publish Helm Charts Manifests'
+  inputs:
+    pathToPublish: '$(Build.ArtifactStagingDirectory)/charts'
+    artifactName: charts-manifests
+  continueOnError: true

@@ -1,0 +1,107 @@
+parameters:
+- name: BuildType
+- name: Language 
+  default: ''
+- name: PathArtifact
+  default: ''
+- name: PathDockerfile
+  default: ''
+- name: Sonar
+  default: true
+- name: Veracode
+  default: "No"
+- name: gitleaksLock
+  default: "No"
+- name: nodeVersion
+  default: '21.5.0'
+- name: SkipTests
+  default: 'No'
+- name: VeracodeLock
+  default: 'No'
+- name: noCode
+  default: 'false'
+- name: SonarLock
+  default: '0'
+- name: mavenVersion
+  type: string
+  default: '3.6.3' 
+- name: poolName
+  default: 'Agents-Dev'
+- name: fullExec
+  default: false
+- name: libArtifact
+  default: false
+
+
+stages:
+  - stage: Config
+    displayName: 'Input dos parâmetros'
+    condition: |
+       or(
+         contains(variables['Build.SourceBranch'], 'refs/heads/feature'),
+         contains(variables['Build.SourceBranch'], 'refs/heads/develop'),
+         contains(variables['Build.SourceBranch'], 'refs/heads/release'),
+         contains(variables['Build.SourceBranch'], 'refs/heads/master'),
+         contains(variables['Build.SourceBranch'], 'refs/heads/hotfix'),
+         eq(variables['Build.Reason'], 'PullRequest')
+       )
+    jobs:
+    - job: Config_Parameters
+      pool:
+        name: ${{ parameters.poolName }}
+      displayName: 'Configurando Parâmetros'
+      steps:
+      - template: Modules/Config/config.yaml
+        parameters:
+          Build: ${{ parameters.BuildType }}
+          Lang: ${{ parameters.Language }}
+          Artifact: ${{ parameters.PathArtifact }}
+          Dockerfile: ${{ parameters.PathDockerfile }}
+          Security: ${{ parameters.Veracode }}
+          node: ${{ parameters.nodeVersion }}
+          skipUnitTests: ${{ parameters.SkipTests }}
+          veracodeLockFails: ${{ parameters.VeracodeLock }}
+          SonarLockFails: ${{ parameters.SonarLock }}
+  - ${{ if or(eq(variables['Build.Reason'], 'PullRequest'), contains(variables['Build.SourceBranch'], 'refs/heads/hotfix'),contains(variables['Build.SourceBranch'], 'refs/heads/release'), contains(variables['Build.SourceBranch'], 'refs/heads/feature'), contains(variables['Build.SourceBranch'], 'refs/heads/develop'), contains(variables['Build.SourceBranch'], 'refs/heads/bugfix'), contains(variables['Build.SourceBranch'], 'refs/heads/master')) }}:
+    - template: Workflow/CI/Gitleak.yaml
+      parameters:
+        NomeDoStageGitleak: Gitleak
+        ConditionTriggersGitleak: succeeded('Config')
+        DisplayNameGitleak: 'Gitleaks'
+        DependsOnTriggerGitleak: Config
+        PoolNameAgentGitleak: ${{ parameters.poolName }}
+        gitleaksLock: ${{ parameters.gitleaksLock }}
+    - ${{ if or(eq(parameters.Language, 'JS'), eq(parameters.Language, 'Js')) }}:
+        - template: Workflow/CI/Lang/js.yaml
+          parameters:
+            BuildType: ${{ parameters.BuildType }}
+            Language: ${{ parameters.Language }}
+            PathArtifact: ${{ parameters.PathArtifact }}
+            PathDockerfile: ${{ parameters.PathDockerfile }}
+            Veracode: ${{ parameters.Veracode }}
+            nodeVersion: ${{ parameters.nodeVersion }}
+            SkipTests: ${{ parameters.SkipTests }}
+            VeracodeLock: ${{ parameters.VeracodeLock }}
+            noCode: ${{ parameters.noCode }}
+            SonarLock: ${{ parameters.SonarLock }}
+            poolName: ${{ parameters.poolName }}
+            Sonar: ${{ parameters.Sonar }}
+            fullExec: ${{ parameters.fullExec }}
+            mavenVersion: ${{ parameters.mavenVersion }}
+    - ${{ if or(eq(parameters.Language, 'java'), eq(parameters.Language, 'Java')) }}:
+        - template: Workflow/CI/Lang/java.yaml
+          parameters:
+            BuildType: ${{ parameters.BuildType }}
+            Language: ${{ parameters.Language }}
+            PathArtifact: ${{ parameters.PathArtifact }}
+            PathDockerfile: ${{ parameters.PathDockerfile }}
+            Veracode: ${{ parameters.Veracode }}
+            SkipTests: ${{ parameters.SkipTests }}
+            VeracodeLock: ${{ parameters.VeracodeLock }}
+            noCode: ${{ parameters.noCode }}
+            SonarLock: ${{ parameters.SonarLock }}
+            mavenVersion: ${{ parameters.mavenVersion }}
+            poolName: ${{ parameters.poolName }}
+            Sonar: ${{ parameters.Sonar }}
+            fullExec: ${{ parameters.fullExec }}
+            libArtifact: ${{ parameters.libArtifact }}

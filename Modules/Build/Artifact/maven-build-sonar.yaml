@@ -1,0 +1,20 @@
+parameters:
+- name: mavenVersion
+  default: '3.5.4'
+
+steps:
+- template: ./maven-version.yaml
+  parameters:
+    mavenVersion: ${{ parameters.mavenVersion }}
+
+#Essa task executa o processo de build com o jacoco mas nao executa a analise sonar.
+- task: Maven@4
+  condition: eq(variables['VariableLanguage'], 'Java')
+  inputs:
+    mavenPomFile: '$(language.VariablePathConfig)'
+    goals: 'org.jacoco:jacoco-maven-plugin:prepare-agent org.jacoco:jacoco-maven-plugin:$(path.VariableJacocoVersion):report clean package $(path.VariableSkipTests) --settings <PATH>/'
+    options: '-X -Dsonar.coverage.jacoco.xmlReportPaths=$(System.DefaultWorkingDirectory)/source/**/jacoco.xml -U --settings <PATH>/.m2/'
+    codeCoverageToolOption: 'JaCoCo'
+    javaHomeOption: 'Path'
+    jdkDirectory: '$(path.VariableJava)'
+  displayName: 'Maven Build Jacoco'

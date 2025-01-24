@@ -1,0 +1,74 @@
+parameters:
+- name: Build
+- name: Lang
+- name: Artifact
+- name: Dockerfile
+- name: Security
+- name: node
+- name: skipUnitTests
+- name: VeracodeLockFails
+- name: SonarLockFails
+
+steps:
+- checkout: self
+  fetchDepth: 1      
+  submodules: false   
+  persistCredentials: false  
+  clean: false  
+
+- bash: |
+    RED="\e[1;31m"
+    GREEN="\e[1;32m"
+    echo -e "${GREEN}[+] Salvando as configs em um tmp"
+    echo "BuildType: ${{ parameters.Build }}" > /tmp/$(Build.Repository.Name)-config-$(Build.BuildId)
+    echo "Language: ${{ parameters.Lang }}" >> /tmp/$(Build.Repository.Name)-config-$(Build.BuildId)
+    echo "PathArtifact: '${{ parameters.Artifact }}'" >> /tmp/$(Build.Repository.Name)-config-$(Build.BuildId)
+    echo "PathDockerfile: ${{ parameters.Dockerfile }}" >> /tmp/$(Build.Repository.Name)-config-$(Build.BuildId)
+    echo "Veracode: ${{ parameters.Security }}" >> /tmp/$(Build.Repository.Name)-config-$(Build.BuildId)
+    echo "nodeVersion: ${{ parameters.node }}" >> /tmp/$(Build.Repository.Name)-config-$(Build.BuildId)
+    echo "SkipTests: ${{ parameters.skipUnitTests }}" >> /tmp/$(Build.Repository.Name)-config-$(Build.BuildId)
+    echo "VeracodeLock: ${{ parameters.VeracodeLockFails }}" >> /tmp/$(Build.Repository.Name)-config-$(Build.BuildId)
+    echo "SonarLock: ${{ parameters.SonarLockFails }}" >> /tmp/$(Build.Repository.Name)-config-$(Build.BuildId)
+
+    if [[ -z "${{ parameters.Artifact }}" ]] && [[ "${{ parameters.Lang }}" == "Java" ]] ; then
+      echo -e "${RED}  [-] FALHA - Defina o PathArtifact como parametroda pipeline!"
+      echo -e "${RED}      - PathArtifact: source/<artifact>.jar"
+      exit 1
+    elif [[ ! -z "${{ parameters.Artifact }}" ]] && [[ "${{ parameters.Lang }}" == "Java" ]] ; then
+      echo -e "${GREEN}  [+] PathArtifact: ${{ parameters.Artifact }}"
+    else
+      echo -e "${GREEN}  [!!] Aplicação ${{ parameters.Lang }} não utiliza PathArtifact"
+    fi
+
+    echo "[+] cat no arquivo de config => /tmp/$(Build.Repository.Name)-config-$(Build.BuildId)"
+    cat /tmp/$(Build.Repository.Name)-config-$(Build.BuildId)
+  displayName: 'config'
+#- ${{ if and(eq(variables['Build.Reason'], 'PullRequest'), eq(variables['system.pullRequest.targetBranch'], 'refs/heads/master')) }}:
+- ${{ if eq(variables['Build.Reason'], 'PullRequest') }}:
+    - bash: |
+        RED="\e[1;31m"
+        GREEN="\e[1;32m"
+    
+        sourceBranch=$(System.PullRequest.SourceBranch)
+        targetBranch=$(System.PullRequest.TargetBranch)
+        sourceBranchName=${sourceBranch#refs/heads/}
+        targetBranchName=${targetBranch#refs/heads/}
+        
+        echo -e "${GREEN}##############################################################################"
+        if [[ $sourceBranchName == release* && $targetBranchName == "master" ]] || [[  $sourceBranchName == hotfix* && $targetBranchName == "master" ]]; then
+          echo -e "${GREEN}[+] Pull Request válido: De $sourceBranchName para $targetBranchName."
+          echo -e "${GREEN}[+] Branch Source: ${sourceBranchName}"
+          echo -e "${GREEN}[+] Branch Target: ${targetBranchName}"
+        elif [[ $targetBranchName != "master" ]] ; then
+          echo -e "${GREEN}[+] Branch Source: ${sourceBranchName}"
+          echo -e "${GREEN}[+] Branch Target: ${targetBranchName}"
+        else
+          echo -e "${RED}[-] Pull Request inválido: PRs para master só podem vir de branches ${GREEN}release/*"
+          echo -e "${RED}  [-] Branch Source: ${sourceBranchName}"
+          echo -e "${RED}  [-] Branch Target: ${targetBranchName}"          
+          exit 1  
+          echo -e "${GREEN}##############################################################################"
+        fi
+        echo -e "${GREEN}##############################################################################"
+      displayName: 'Validate PR'
+

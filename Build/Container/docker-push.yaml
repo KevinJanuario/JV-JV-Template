@@ -1,0 +1,32 @@
+
+steps:
+- task: PublishBuildArtifacts@1
+  inputs:
+    PathtoPublish: 'imageTag.txt'
+    ArtifactName: 'tag'
+    publishLocation: 'Container'
+  displayName: "Publish Tag Artifact"
+
+- task: Docker@2
+  displayName: "Image Push"
+  inputs:
+    containerRegistry: 'nexus'
+    repository:  $(imageTag.VariableBuild)
+    command: push
+    tags: |
+      $(imageTag.VariableTag)
+      latest
+
+- bash: |
+      image="$(imageTag.VariableProject)"
+      tag="$(imageTag.VariableTag)"
+      echo "[+] Remove image $image:$tag e latest"
+      docker image rm $image:$tag
+      docker image rm $image:latest
+      echo "[+] Removing images without TAGS"
+      for i in $(docker images | grep "^<none>" | cut -d ">" -f3| cut -c 38-| cut -d " " -f1 | tr "_" "-"); do docker image rm "$i" ; done 2>-; true
+  displayName: "Removing container image"
+  condition: succeededOrFailed()
+
+
+

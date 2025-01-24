@@ -1,0 +1,32 @@
+# Stage utilizado nos pacotes que só fazem o deploy
+parameters:
+- name: NomeDoStagePublishArtifact
+  default: ""
+- name: ConditionTriggersPublishArtifact
+  default: ""
+- name: DisplayNamePublishArtifact
+  default: ""
+- name: DependsOnTriggerPublishArtifact
+  default: ""
+- name: PoolNameAgentPublishArtifact
+  default: ""
+- name: libArtifact
+  default: false
+
+stages:
+- ${{ if ne(variables['Build.Reason'], 'PullRequest')}}:
+    - stage: ${{ parameters.NomeDoStagePublishArtifact }}
+      condition: ${{ parameters.ConditionTriggersPublishArtifact }}
+      displayName: ${{ parameters.DisplayNamePublishArtifact }}
+      dependsOn: ${{ parameters.DependsOnTriggerPublishArtifact }} 
+      pool:
+        name: ${{ parameters.PoolNameAgentPublishArtifact }}
+      jobs:
+      - job: publish
+        displayName: 'Drop do Artefato'
+        workspace:
+          clean: all
+        steps:
+        - template: ../../Modules/Build/Artifact/drop-build.yaml
+          parameters:
+            libArtifact: ${{ parameters.libArtifact }}

@@ -1,0 +1,316 @@
+steps:
+- bash: |
+    ARTIFACT=$(cat /tmp/$(Build.Repository.Name)-config-$(Build.BuildId) | egrep "PathArtifact" | awk -F "'" '{print $2}')
+    echo "[+] Path do Artifact => $(Build.Repository.LocalPath)/$ARTIFACT"
+    chmod +x $(Build.Repository.LocalPath)/$ARTIFACT
+    echo "##vso[task.setvariable variable=VariablePathArtifact;isOutput=true]$ARTIFACT"
+  name: path_artifact
+  displayName: 'Path Artifact'
+
+- bash: |
+    # Verifica se o arquivo existe
+      CONFIG_FILE="/tmp/$(Build.Repository.Name)-config-$(Build.BuildId)"
+      if [[ -f "$CONFIG_FILE" ]]; then
+        echo "[+] Arquivo de configuração encontrado: $CONFIG_FILE"
+        cat $CONFIG_FILE
+        # Lê a linha com VeracodeLock
+        VeracodeLock=$(grep -E "VeracodeLock" "$CONFIG_FILE" | sed -n "s/.*VeracodeLock\s*:\s*\(\S*\).*/\1/p")
+        
+        # Verifica se a variável foi corretamente extraída
+        if [[ -n "$VeracodeLock" ]]; then
+          echo "[+] VeracodeLock => $VeracodeLock"
+          echo "##vso[task.setvariable variable=VeracodeLockFails;isOutput=true]$VeracodeLock"
+        else
+          echo "[!] VeracodeLock não encontrada no arquivo de configuração ou formato inesperado."
+          echo "##vso[task.setvariable variable=VeracodeLockFails;isOutput=true]No"
+        fi
+      else
+        echo "[!] Arquivo de configuração não encontrado: $CONFIG_FILE"
+        echo "##vso[task.setvariable variable=VeracodeLockFails;isOutput=true]No"
+      fi
+  name: veracode_Trava
+  displayName: 'Lock Veracode fails(Yes/No)'
+
+- task: Bash@3
+  displayName: Veracode Pipeline Scan (Fail Lock)
+  condition: eq(variables['veracode_Trava.VeracodeLockFails'], 'Yes')
+  inputs:
+    targetType: "inline"
+    script: |
+        #!/bin/bash
+        source /<PATH>/.bashrc
+        
+        RED="\033[0;31m"
+        GREEN="\033[0;32m"
+        YELLOW="\033[0;33m"
+        BLUE="\033[0;34m"
+        RESET="\033[0m"
+        
+        #Função que executa o veracode
+        run_veracode_scan() {
+          local artifact_path=$1
+          echo "[+] Executando Veracode Pipeline Scan no path: $artifact_path"
+        
+          java -jar /<PATH>/pipeline-scan.jar -vid $VERACODE_API_KEY_ID -vkey $VERACODE_API_KEY_SECRET \
+            --json_output_file="results.json" --issue_details true --summary_output true --summary_output_file="results.txt" \
+            -f "$artifact_path"
+
+          result_file=$(find ./ -name results.txt)
+          echo "[!!] Report: $result_file"
+          cp -v $result_file ../ 
+        
+          #Função que loga o erro caso analse falhe
+          if [[ $? -ne 0 ]]; then
+            echo "#################################################"
+            echo "VERIFICAR O VERACODE POIS HOUVE FALHA NA ANALISE"
+            echo "#################################################"
+            exit 1
+          fi
+        
+          #Detecta falha
+          if grep -q '"severity":"High"' results.json || grep -q '"severity":"Very High"' results.json; then
+            echo "[!] Vulnerabilidades críticas encontradas no Veracode Pipeline Scan. =("
+            exit 1
+          else
+            echo "[+] Nenhuma vulnerabilidade crítica encontrada. =)"
+            cp -v results.txt ..
+          fi
+        }
+        
+        # Weblogic Apps
+        process_weblogic_app() {
+          local path_artifact_var=$(path_artifact.VariablePathArtifact)
+          echo -e "${BLUE}[+] path do artefato => $path_artifact_var"
+        
+          IFS=',' read -r FILE_PATH1 FILE_PATH2 <<< "$path_artifact_var"
+        
+          if [[ -n "$FILE_PATH1" && -n "$FILE_PATH2" ]]; then
+            echo "  - Primeiro caminho: $FILE_PATH1"
+            echo "  - Segundo caminho: $FILE_PATH2"
+            run_veracode_scan "$FILE_PATH1"
+          else
+            run_veracode_scan "$path_artifact_var"
+          fi
+        }
+        
+        # Backend Apps
+        process_backend_app() {
+          local context_dir="$1"
+          local pom_file="$context_dir/pom.xml"
+          local path_artifact
+        
+          echo "[+] Verificando se existe a TAG finalName no pom.xml..."
+          if grep -q '<finalName>' "$pom_file"; then
+            local final_name=$(grep -oP '<finalName>\K[^<]+' "$pom_file")
+            echo "  [+] Verificando se valor de finalName é artifactId"
+            if [[ "$final_name" = "\${project.artifactId}" ]]; then
+              local artifact_id=$(grep -oP '<artifactId>\K[^<]+' "$pom_file" | head -n 1)
+              path_artifact="$context_dir/target/$artifact_id.jar"
+              echo "  [!!] ArtifactId=$path_artifact"
+            else
+              path_artifact="$context_dir/target/$final_name.jar"
+              echo "  [!!] ArtifactId=$path_artifact"
+            fi
+            
+            if [[ "$(path_artifact.VariablePathArtifact)" != "$path_artifact" ]]; then
+              if [[ -z "$(path_artifact.VariablePathArtifact)" ]]; then
+                echo "[!] VariablePathArtifact vazio... "
+                path_artifact="$path_artifact"
+              else
+                echo "[!] artifact_id e PathArtifact não são iguais... Mantendo artefato da pipeline!"
+                pwd 
+                ls -lart
+                path_artifact=$(echo "$(path_artifact.VariablePathArtifact)" | sed -e 's#^source/#./#' -e 's#^/#./#')
+                cd source
+                ls -lart
+              fi
+            fi
+        
+            run_veracode_scan "$path_artifact"
+          else
+            echo "[!!] A tag <finalName> não está presente no pom.xml. Por favor, revise seu pom.xml de configuracoes"
+            exit 1
+          fi
+        }
+        
+        # Angular Apps
+        process_angular_app() {
+          echo "Projeto Angular encontrado"
+          local build_js_zip=$(System.DefaultWorkingDirectory)/BuildJS.zip
+          zip -r "$build_js_zip" $(System.DefaultWorkingDirectory)/* -x "*/node_modules/*"
+          run_veracode_scan "$build_js_zip"
+          mv "$build_js_zip" /<PATH>/artifact-angular
+        }
+        
+        # Execução das funções
+        repo_name=$(echo $BUILD_REPOSITORY_NAME | tr '[:upper:]' '[:lower:]')
+        
+        allowed_repos=("REPO" "REPO") 
+        pwd
+        ls -lart
+        if [[ " ${allowed_repos[@]} " =~ " ${repo_name} " ]]; then
+          echo -e "${GREEN}[+] A aplicação é uma app weblogic... buscando path do Artefato do parâmetro"
+          process_weblogic_app
+        else
+          echo "${GREEN}[+] A aplicação é um microsserviço do Openshift."
+
+          if [[ -f "./angular.json" ]]; then
+            process_angular_app
+          elif [[ -f "./pom.xml" ]]; then
+            process_backend_app "./"
+          elif [[ -d "./source" ]]; then
+            echo -e "${GREEN}[+] App Backend... diretório source encontrado, mudando de contexto..."
+            process_backend_app "./source"
+          elif [[ -d "./src" ]]; then
+            echo -e "${GREEN}[+] App Backend... diretório src encontrado, mudando de contexto..."
+            process_backend_app "./src"
+          else
+            echo -e "${YELLOW}[!!] Contexto raiz:"
+            echo -e "${BLUE} - $(pwd)"
+          fi
+        fi
+  
+- task: Bash@3
+  displayName: Veracode Pipeline Scan
+  condition: eq(variables['veracode_Trava.VeracodeLockFails'], 'No')
+  continueOnError: true
+  inputs:
+    targetType: "inline"
+    script: |
+        #!/bin/bash
+        source /<PATH>/.bashrc
+        
+        RED="\033[0;31m"
+        GREEN="\033[0;32m"
+        YELLOW="\033[0;33m"
+        BLUE="\033[0;34m"
+        RESET="\033[0m"
+        
+        # Função para executar o Veracode Scan
+        run_veracode_scan() {
+          local artifact_path=$1
+          echo "[+] Executando Veracode Pipeline Scan no path: $artifact_path"
+        
+          java -jar /<PATH>/pipeline-scan.jar -vid $VERACODE_API_KEY_ID -vkey $VERACODE_API_KEY_SECRET \
+            --json_output_file="results.json" --issue_details true --summary_output true --summary_output_file="results.txt" \
+            -f "$artifact_path"
+          cp -v results.txt ..
+          
+          if [[ $? -ne 0 ]]; then
+            echo "#################################################"
+            echo "VERIFICAR O VERACODE POIS HOUVE FALHA NA ANALISE"
+            echo "#################################################"
+            cp -v results.txt ..
+            exit 1
+          fi
+        
+          cp -v results.txt ..
+        }
+        
+        determine_artifact_path() {
+          local final_name="$1"
+          local artifact_id="$2"
+          local artifact_path
+        
+          if [[ "$final_name" = "\${project.artifactId}" ]]; then
+            artifact_id=$(grep -oP '<artifactId>\K[^<]+' "pom.xml" | head -n 1)
+            artifact_path="target/$artifact_id.jar"
+          else
+            artifact_path="target/$final_name.jar"
+          fi
+        
+          if [[ "$(path_artifact.VariablePathArtifact)" != "$artifact_path" ]]; then
+            if [[ -z "$(path_artifact.VariablePathArtifact)" ]]; then
+              echo "[!] VariablePathArtifact vazio... Usando $artifact_path"
+            else
+              echo "[!] artifact_id e PathArtifact não são iguais... Mantendo artefato da pipeline!"
+              pwd
+              ls -lart
+              artifact_path=$(echo "$(path_artifact.VariablePathArtifact)" | sed -e 's#^source/#./#' -e 's#^/#./#')
+            fi
+          fi
+        
+          echo "  - $artifact_path"
+          echo "[+] ArtifactId do <project>: $artifact_id"
+          echo "[+] Executando pipelinescan no path: $artifact_path"
+          run_veracode_scan "$artifact_path"
+        }
+        
+        # Weblogic Apps
+        process_weblogic_app() {
+          local path_artifact_var=$(path_artifact.VariablePathArtifact)
+          echo -e "${BLUE}[+] path do artefato => $path_artifact_var"
+        
+          IFS=',' read -r FILE_PATH1 FILE_PATH2 <<< "$path_artifact_var"
+        
+          if [[ -n "$FILE_PATH1" && -n "$FILE_PATH2" ]]; then
+            echo "Primeiro caminho: $FILE_PATH1"
+            echo "Segundo caminho: $FILE_PATH2"
+            run_veracode_scan "$FILE_PATH1"
+          else
+            run_veracode_scan "$path_artifact_var"
+          fi
+        }
+        
+        # Backend Apps
+        process_backend_app() {
+          local context_dir="$1"
+          local pom_file="pom.xml"
+        
+          cd "$context_dir"
+          if grep -q '<finalName>' "$pom_file"; then
+            echo "[!!] finalName encontrado dentro do pom.xml..."
+            local final_name=$(grep -oP '<finalName>\K[^<]+' "$pom_file")
+            determine_artifact_path "$final_name" "$(Build.Repository.Name)"
+          else
+            echo "[!!] A tag <finalName> não está presente no pom.xml. Por favor, revise seu pom.xml de configurações."
+            exit 1
+          fi
+        }
+        
+        # Angular Apps
+        process_angular_app() {
+          echo "Projeto Angular encontrado"
+          local build_js_zip=$(System.DefaultWorkingDirectory)/BuildJS.zip
+          zip -r "$build_js_zip" $(System.DefaultWorkingDirectory)/* -x "*/node_modules/*"
+          run_veracode_scan "$build_js_zip"
+          mv "$build_js_zip" /<PATH>/artifact-angular
+        }
+        
+        repo_name=$(echo $BUILD_REPOSITORY_NAME | tr '[:upper:]' '[:lower:]')        
+        allowed_repos=("btbci" "acl" "aclws" "bwb" "cs" "docsweb" "echecklist" "gcb" "gerofer" "menudbslight" "pcontabil" "rbp" "salesforce" "segon" "sgat" "sgrc" "sgsim" "sso" "ssosecurity" "toyotab2c" "toyotadbslight" "transbacen" "b2c")
+        
+        if [[ " ${allowed_repos[@]} " =~ " ${repo_name} " ]]; then
+          echo -e "${GREEN}[+] A aplicação é uma app weblogic... buscando path do Artefato do parâmetro"
+          process_weblogic_app
+        else
+          echo "${GREEN}[+] A aplicação é um microsserviço do Openshift."
+
+          if [[ -f "./angular.json" ]]; then
+            process_angular_app
+          elif [[ -f "./pom.xml" ]]; then
+            process_backend_app "./"
+          elif [[ -d "./source" ]]; then
+            echo -e "${GREEN}[+] App Backend... diretório source encontrado, mudando de contexto..."
+            process_backend_app "./source"
+          elif [[ -d "./src" ]]; then
+            echo -e "${GREEN}[+] App Backend... diretório src encontrado, mudando de contexto..."
+            process_backend_app "./src"
+          else
+            echo -e "${YELLOW}[!!] Contexto raiz:"
+            echo -e "${BLUE} - $(pwd)"
+          fi
+        fi
+        
+     
+- task: CopyFiles@2
+  displayName: "Copiar Resultados"
+  inputs:
+    Contents: '$(Build.Repository.LocalPath)/results.txt'
+    TargetFolder: '$(build.artifactstagingdirectory)'
+
+- task: PublishBuildArtifacts@1
+  displayName: Publicando Resultados
+  inputs:
+    PathtoPublish: '$(Build.ArtifactStagingDirectory)/results.txt'
+    ArtifactName: 'VeracodeBaseline'

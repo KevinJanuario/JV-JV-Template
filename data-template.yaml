@@ -1,0 +1,37 @@
+jobs:
+- job: build_data_develop
+  displayName: 'Build Data - Develop'
+  pool: 
+    name: Agents-Dev 
+  condition: eq(variables['Build.SourceBranch'], 'refs/heads/develop')
+  steps:
+    - template: build-scripts/api-steps-container.yml
+      parameters: 
+        dockerRegistryEndpoint: 'nexus'
+        imageNameBuildNumberTag: 'new-front-dev/$(Build.Repository.Name):$(Build.BuildId)'
+        imageNameLatestTag: 'new-front-dev/$(Build.Repository.Name):latest'
+   
+- job: build_data_release
+  displayName: 'Build Data - Release'
+  pool: 
+    name: Agents-Hml 
+  #condition: eq(variables['Build.SourceBranch'], 'refs/heads/release')
+  condition: or(eq(variables['Build.SourceBranch'], 'refs/heads/release'), eq(variables['Build.SourceBranch'], 'refs/heads/release-helm'))
+  steps:
+    - template: build-scripts/api-steps-container.yml
+      parameters: 
+        dockerRegistryEndpoint: 'nexus'
+        imageNameBuildNumberTag: 'new-front-homolog/$(Build.Repository.Name):$(Build.BuildId)'
+        imageNameLatestTag: 'new-front-homolog/$(Build.Repository.Name):latest'
+
+- job: build_data_master
+  displayName: 'Build Data - Master'
+  pool: 
+    name: Agents-Prd 
+  condition: eq(variables['Build.SourceBranch'], 'refs/heads/master')
+  steps:
+    - template: build-scripts/api-steps-container.yml
+      parameters: 
+        dockerRegistryEndpoint: 'nexus'
+        imageNameBuildNumberTag: 'direct/$(Build.Repository.Name):$(Build.BuildId)'
+        imageNameLatestTag: 'direct/$(Build.Repository.Name):latest'

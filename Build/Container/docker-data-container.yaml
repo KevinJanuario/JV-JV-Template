@@ -1,0 +1,56 @@
+parameters: 
+  dockerRegistryEndpoint: ''
+  imageNameBuildNumberTag: ''
+  imageNameLatestTag: ''
+
+steps:
+- task: Docker@1
+  displayName: 'Build image'
+  inputs:
+    containerregistrytype: 'Container Registry'
+    dockerRegistryEndpoint: ${{ parameters.dockerRegistryEndpoint }}
+    dockerFile: source/Dockerfile
+    useDefaultContext: false
+    buildContext: source
+    imageName: ${{ parameters.imageNameBuildNumberTag }}
+    includeLatestTag: true
+    addDefaultLabels: false
+
+- task: Docker@1
+  displayName: 'Build image'
+  inputs:
+    containerregistrytype: 'Container Registry'
+    dockerRegistryEndpoint: ${{ parameters.dockerRegistry }}
+    dockerFile: source/Dockerfile
+    useDefaultContext: false
+    buildContext: source
+    imageName: ${{ parameters.ocnewimageNameBuildNumberTag }}
+    includeLatestTag: true
+    addDefaultLabels: false
+
+- task: Docker@1
+  displayName: 'Push image'
+  inputs:
+    containerregistrytype: 'Container Registry'
+    dockerRegistryEndpoint: ${{ parameters.dockerRegistryEndpoint }}
+    command: 'Push an image'
+    imageName: ${{ parameters.imageNameBuildNumberTag }}
+    includeSourceTags: true
+
+- task: Docker@1
+  displayName: 'Push image'
+  inputs:
+    containerregistrytype: 'Container Registry'
+    dockerRegistryEndpoint: ${{ parameters.dockerRegistryEndpoint }}
+    command: 'Push an image'
+    imageName: ${{ parameters.imageNameLatestTag }}
+    includeSourceTags: true
+
+- task: Docker@1
+  displayName: 'Push image'
+  inputs:
+    containerregistrytype: 'Container Registry'
+    dockerRegistryEndpoint: ${{ parameters.dockerRegistry }}
+    command: 'Push an image'
+    imageName: ${{ parameters.ocnewimageNameBuildNumberTag }}
+    includeSourceTags: true

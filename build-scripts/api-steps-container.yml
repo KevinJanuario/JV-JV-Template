@@ -1,0 +1,83 @@
+parameters: 
+  dockerRegistryEndpoint: ''
+  imageNameBuildNumberTag: ''
+  imageNameLatestTag: ''
+
+steps:
+- task: Docker@1
+  displayName: 'Build an image'
+  inputs:
+    containerregistrytype: 'Container Registry'
+    dockerRegistryEndpoint: ${{ parameters.dockerRegistryEndpoint }}
+    dockerFile: source/Dockerfile
+    useDefaultContext: false
+    buildContext: source
+    imageName: ${{ parameters.imageNameBuildNumberTag }}
+    includeLatestTag: true
+    addDefaultLabels: false
+
+# - task: Docker@1
+#   displayName: 'Build an image'
+#   inputs:
+#     containerregistrytype: 'Container Registry'
+#     dockerRegistryEndpoint: ${{ parameters.dockerRegistry }}
+#     dockerFile: source/Dockerfile
+#     useDefaultContext: false
+#     buildContext: source
+#     imageName: ${{ parameters.ocnewimageNameBuildNumberTag }}
+#     includeLatestTag: true
+#     addDefaultLabels: false
+
+- task: Docker@1
+  displayName: 'Push an image'
+  inputs:
+    containerregistrytype: 'Container Registry'
+    dockerRegistryEndpoint: ${{ parameters.dockerRegistryEndpoint }}
+    command: 'Push an image'
+    imageName: ${{ parameters.imageNameBuildNumberTag }}
+    includeSourceTags: true
+
+- task: Docker@1
+  displayName: 'Push an image'
+  inputs:
+    containerregistrytype: 'Container Registry'
+    dockerRegistryEndpoint: ${{ parameters.dockerRegistryEndpoint }}
+    command: 'Push an image'
+    imageName: ${{ parameters.imageNameLatestTag }}
+    includeSourceTags: true
+- bash: |
+    if [[ -d "$(Build.SourcesDirectory)/charts" ]] ; then
+      echo "[!!] manifestos charts/ existem..."
+    else
+      echo "[+] Criando diretorio /charts"
+      mkdir -p $(Build.SourcesDirectory)/charts/hml
+      mkdir -p $(Build.ArtifactStagingDirectory)/charts/hml
+      touch $(Build.SourcesDirectory)/charts/hml/null.txt
+    fi
+  displayName: 'Check artifacts'
+  continueOnError: true
+
+- task: CopyFiles@2
+  displayName: 'Copy Helm charts'
+  inputs:
+    SourceFolder: '$(Build.SourcesDirectory)/charts'
+    contents: '**'
+    targetFolder: '$(Build.ArtifactStagingDirectory)/charts'
+  continueOnError: true
+
+- task: PublishBuildArtifacts@1
+  displayName: 'Publish Helm Charts Manifests'
+  inputs:
+    pathToPublish: '$(Build.ArtifactStagingDirectory)/charts'
+    artifactName: charts-manifests
+  continueOnError: true
+
+# - task: Docker@1
+#   displayName: 'Push an image'
+#   inputs:
+#     containerregistrytype: 'Container Registry'
+#     dockerRegistryEndpoint: ${{ parameters.dockerRegistry }}
+#     command: 'Push an image'
+#     imageName: ${{ parameters.ocnewimageNameBuildNumberTag }}
+#     includeSourceTags: true
+
